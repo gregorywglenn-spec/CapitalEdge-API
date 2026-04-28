@@ -6,14 +6,12 @@
  *      live credentials.
  *
  *   2. LIVE MODE — secrets/service-account.json exists. Real Firestore queries
- *      go to the Capital Edge dashboard's database (read-only by convention).
+ *      go to the MCP project's own Firestore database (sibling project, dual-
+ *      scrape architecture — see DATA_REQUIREMENTS_FOR_DASHBOARD.md and the
+ *      handoff doc for why we don't share a database with Capital Edge).
  *
  * Mode is auto-detected at module load. Drop a service-account.json into
  * secrets/ and restart to switch modes.
- *
- * The live-mode queries are intentionally not implemented yet — we'll wire
- * them up once Greg makes the same-vs-sibling Firebase project decision and
- * provisions a service account. For now everything routes to the stub.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -36,9 +34,10 @@ export function isStubMode(): boolean {
 
 // ─── Live-mode client (lazy init) ───────────────────────────────────────────
 
-// Type-only import — keeps firebase-admin out of cold-start unless we actually
-// use it. Important when running in stub mode (most common during dev).
+// Type-only imports — keep firebase-admin out of cold-start unless we
+// actually use it. Important when running in stub mode (no SDK touched).
 type FirestoreInstance = import("firebase-admin/firestore").Firestore;
+type FirestoreQuery = import("firebase-admin/firestore").Query;
 
 let liveDb: FirestoreInstance | null = null;
 
@@ -82,38 +81,120 @@ export async function queryInsiderTransactions(
 async function queryInsiderTransactionsLive(
   query: InsiderTransactionsQuery,
 ): Promise<QueryResult<InsiderTransaction>> {
-  // Wire-up plan once a service account is configured:
-  //
-  //   const db = await getLiveDb();
-  //   let q: FirebaseFirestore.Query = db.collection("insider_trades");
-  //   if (query.ticker) q = q.where("ticker", "==", query.ticker);
-  //   if (query.company_cik) q = q.where("company_cik", "==", query.company_cik);
-  //   if (query.transaction_type) q = q.where("transaction_type", "==", query.transaction_type);
-  //   if (query.min_value !== undefined) q = q.where("total_value", ">=", query.min_value);
-  //   if (query.since) q = q.where(query.sort_by ?? "disclosure_date", ">=", query.since);
-  //   if (query.until) q = q.where(query.sort_by ?? "disclosure_date", "<=", query.until);
-  //   q = q.orderBy(query.sort_by ?? "disclosure_date", query.sort_order ?? "desc");
-  //   const limit = query.limit ?? 50;
-  //   q = q.limit(limit + 1); // +1 to detect has_more
-  //   const snap = await q.get();
-  //   const docs = snap.docs.map(d => normalizeInsiderTrade(d.data()));
-  //   const has_more = docs.length > limit;
-  //   const results = docs.slice(0, limit);
-  //   return { results, has_more };
-  //
-  // Composite indexes required (see DATA_REQUIREMENTS_FOR_DASHBOARD.md
-  // "Firestore configuration" section):
-  //   - insider_trades: (ticker ASC, disclosure_date DESC)
-  //   - insider_trades: (transaction_type ASC, total_value DESC)
-  //
-  // Officer name substring filtering is done client-side after the Firestore
-  // query because Firestore does not support contains/regex queries — list of
-  // results is small enough (<= 500) for in-memory filtering.
+  const db = await getLiveDb();
+  let q: FirestoreQuery = db.collection("insider_trades");
 
-  // Until live mode lands, fall back to stub. This keeps the tool returning
-  // sensible results during the credential-provisioning gap.
-  void getLiveDb; // keep import in tree, suppress unused warning
-  return queryInsiderTransactionsStub(query);
+  if (query.ticker) q = q.where("ticker", "==", query.ticker);
+  if (query.company_cik) {
+    q = q.where("company_cik", "==", query.company_cik);
+  }
+  if (query.transaction_type) {
+    q = q.where("transaction_type", "==", query.transaction_type);
+  }
+  if (query.min_value !== undefined) {
+    q = q.where("total_value", ">=", query.min_value);
+  }
+
+  const sortField = query.sort_by ?? "disclosure_date";
+  const sortOrder = query.sort_order ?? "desc";
+
+  // Date-range filters apply to the active sort field
+  if (query.since) q = q.where(sortField, ">=", query.since);
+  if (query.until) q = q.where(sortField, "<=", query.until);
+
+  q = q.orderBy(sortField, sortOrder);
+
+  const limit = query.limit ?? 50;
+  q = q.limit(limit + 1); // +1 to detect has_more
+
+  const snap = await q.get();
+  let docs = snap.docs.map((d) => d.data() as InsiderTransaction);
+
+  // Officer name substring filter is done client-side. Firestore does not
+  // support `contains`/regex on strings, but the result set is small enough
+  // (<= limit + 1 rows) for in-memory filtering.
+  if (query.officer_name) {
+    const needle = query.officer_name.toLowerCase();
+    docs = docs.filter((t) =>
+      (t.officer_name ?? "").toLowerCase().includes(needle),
+    );
+  }
+
+  const has_more = docs.length > limit;
+  const results = docs.slice(0, limit);
+  return { results, has_more };
+}
+
+/**
+ * Save scraped insider transactions to Firestore.
+ *
+ * Each record uses its `id` as the document key, so re-running a scraper for
+ * the same filings is idempotent — the same trades land at the same doc IDs
+ * with `merge: true` semantics, no duplicates.
+ *
+ * Firestore caps batch size at 500 writes; we use 400 for headroom.
+ *
+ * Throws if called in stub mode (no service account) — the scrape CLI catches
+ * this and prints a friendly message.
+ */
+export async function saveInsiderTransactions(
+  trades: InsiderTransaction[],
+): Promise<{ saved: number; collection: string }> {
+  if (isStubMode()) {
+    throw new Error(
+      "Cannot save to Firestore in stub mode (no service account at secrets/service-account.json)",
+    );
+  }
+  const COLLECTION = "insider_trades";
+  if (trades.length === 0) {
+    return { saved: 0, collection: COLLECTION };
+  }
+
+  const db = await getLiveDb();
+  const collection = db.collection(COLLECTION);
+  const BATCH_SIZE = 400;
+  let saved = 0;
+
+  for (let i = 0; i < trades.length; i += BATCH_SIZE) {
+    const batch = db.batch();
+    const chunk = trades.slice(i, i + BATCH_SIZE);
+    for (const trade of chunk) {
+      batch.set(collection.doc(trade.id), trade, { merge: true });
+    }
+    await batch.commit();
+    saved += chunk.length;
+  }
+
+  return { saved, collection: COLLECTION };
+}
+
+/**
+ * Lightweight Firestore connection check — fetches the Firestore project ID
+ * and runs a no-op read against a sentinel collection. Returns project info
+ * on success; throws on auth/connectivity failures with a useful message.
+ *
+ * Used by the `tsx src/scrape.ts ping` CLI command to verify credentials are
+ * working before spending time on a real scrape run.
+ */
+export async function pingFirestore(): Promise<{
+  mode: "live" | "stub";
+  projectId?: string;
+  collectionsSeen?: number;
+}> {
+  if (isStubMode()) {
+    return { mode: "stub" };
+  }
+  const db = await getLiveDb();
+  // listCollections returns top-level collections — fast, free metadata read
+  const collections = await db.listCollections();
+  const projectId =
+    (db as unknown as { projectId?: string; _projectId?: string }).projectId ??
+    (db as unknown as { projectId?: string; _projectId?: string })._projectId;
+  return {
+    mode: "live",
+    ...(projectId !== undefined ? { projectId } : {}),
+    collectionsSeen: collections.length,
+  };
 }
 
 // ─── Stub mode implementation ───────────────────────────────────────────────
