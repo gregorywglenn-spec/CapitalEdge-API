@@ -1,0 +1,31 @@
+{
+  "name": "capital-edge-mcp",
+  "version": "0.1.0",
+  "description": "MCP server exposing US public financial disclosures (congressional trades, Form 4 insider transactions, 13F institutional holdings) as agent-native tools. Working title — likely renames before public launch.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "capital-edge-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "scrape": "tsx src/scrape.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "fast-xml-parser": "^4.5.1",
+    "firebase-admin": "^13.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "private": true
+}
