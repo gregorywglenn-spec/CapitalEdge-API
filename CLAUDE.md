@@ -10,6 +10,12 @@ This is the day-1 reading for any AI agent (Claude or otherwise) opening this pr
 - **Don't make Greg fight the same UI twice.** When a placeholder like `YOUR-USERNAME` showed up in instructions, he typed it literally — costing two failed `git push` cycles. Always offer to fill in known values directly, or ask for them up front.
 - **Don't conflate "data only" with "no transformations."** Pure-publisher posture (this project) doesn't surface derived intelligence (signal_weight, convergence scores, ranks). It still does normalization (CUSIP→ticker, date format, field cleanup). Greg explicitly locked the line: data only, no scores, no opinions, ever.
 - **Project boundary discipline is real.** This project does NOT write to Capital Edge's Firestore collections. All scraper changes for this project's data happen in *this* codebase, against *this* project's Firebase. Capital Edge is owned by Derek (informal partner) and gets touched only via the data requirements doc as a peer FYI, never as a dependency.
+- **Don't trust XML parsers with CUSIPs.** fast-xml-parser auto-parses numeric-looking strings as numbers by default. CUSIPs like `92343E102` (VeriSign) look like scientific notation and get destroyed (became `9.2343e+102`). CUSIPs with leading zeros (`037833100` → `37833100`) lose the prefix. Always set `parseTagValue: false` AND `parseAttributeValue: false`. The first 13F run silently mangled half the CUSIPs before this was caught.
+- **13F filings have sub-account dupes — always aggregate by CUSIP.** Large institutional managers (Berkshire, BlackRock, Vanguard) report each security multiple times across internal "managers" / sub-accounts. Berkshire's 110-row 13F XML reduces to 42 unique securities once aggregated. Without aggregation, records collide on the same Firestore doc ID and silently overwrite — real data loss.
+- **OpenFIGI returns foreign exchange listings by default.** Without a US-exchange preference filter in `pickBestMatch`, big-cap US stocks resolve to their Frankfurt/XETRA tickers (Chevron→`CHV`, Alphabet→`ABEA`, Moody's→`DUT`, DaVita→`TRL`, Sirius→`3HY`). Always filter `exchCode` for US codes (`US`, `UN`, `UQ`, `UR`, `UW`, `UA`, `UV`, `UF`, `UP`, `UD`, `UB`) before picking shortest ticker.
+- **CINS-coded CUSIPs (starting with G or H) need an EDGAR name fallback.** Foreign-domiciled US-listed companies (Chubb-Bermuda, AON-Ireland, Allegion-Ireland, Liberty Latin America-Bermuda) have CUSIPs that begin with letters per the CINS scheme. OpenFIGI often only returns the foreign primary listing, missing the US dual listing. `src/sec-tickers.ts` falls back to EDGAR's `company_tickers.json` matching on normalized issuer name. Closes Chubb (CB), AON, Allegion (ALLE), Liberty Latin America (LILA).
+- **Microsoft Store Claude Desktop has a sandboxed config path.** Standard install: `%APPDATA%\Claude\claude_desktop_config.json`. Microsoft Store install: `%LOCALAPPDATA%\Packages\Claude_<hash>\LocalCache\Roaming\Claude\claude_desktop_config.json`. The standard path returns "location unavailable" for Store installs. Greg's machine: `C:\Users\home8\AppData\Local\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\claude_desktop_config.json`.
+- **MCP server path resolution must be module-relative, not cwd-relative.** When Claude Desktop spawns the MCP server, the working directory is unpredictable (might be Claude's install dir). `firestore.ts` resolves `secrets/service-account.json` from `import.meta.url` → module dir → project root. Same pattern for any other relative-path file the server needs to read.
 
 ## What This Project Is
 
@@ -30,9 +36,11 @@ Decisions made tonight that should not be re-litigated without explicit reason:
 - **Transport: stdio for v0.x dev, remote (HTTPS) for v1 deployment.** Hosting target is a sibling Firebase project's Cloud Functions or Cloud Run. Deployment infrastructure not yet stood up.
 - **Repo: `https://github.com/gregorywglenn-spec/CapitalEdge-API`.** Private. Greg's GitHub username is `gregorywglenn-spec` (note: not `gregorywglenn`).
 
-## Current State (April 28, 2026 — end of build session)
+## Current State (April 29, 2026 — Day 2 in progress)
 
 What runs end-to-end **right now**:
+
+**From Day 1 (April 28):**
 
 - ✅ MCP server scaffolded and boots (`npm run dev` shows `LIVE MODE` on stdio)
 - ✅ One MCP tool registered: `get_insider_transactions` — works against real Firestore data
@@ -44,18 +52,34 @@ What runs end-to-end **right now**:
 - ✅ 76 real insider trades sitting in the `insider_trades` collection from a successful `form4-feed 3 --save` run
 - ✅ Pushed to GitHub on `main`
 
+**Day 2 additions (April 29):**
+
+- ✅ **13F scraper ported to Node/TypeScript with full v1-quality enrichment** (`src/scrapers/13f.ts`): parses informationTable XML, aggregates sub-account dupes by CUSIP, top-50-by-value filter
+- ✅ **OpenFIGI integration** (`src/openfigi.ts`): CUSIP→ticker via Bloomberg's free API, US-exchange preference, Firestore write-through cache (`cusip_map` collection), optional `OPENFIGI_API_KEY` env var for higher rate limits
+- ✅ **EDGAR name fallback** (`src/sec-tickers.ts`): when OpenFIGI returns empty for foreign-domiciled CINS CUSIPs, falls back to matching against EDGAR's `company_tickers.json` by normalized issuer name. Catches Chubb→CB, AON, Allegion→ALLE, Liberty Latin America→LILA
+- ✅ **Position-change calculation** (`13f.ts:applyPositionChanges`): compares each current-quarter holding to the same fund's prior-quarter holding from Firestore, computes `position_change` ("new" / "increased" / "decreased" / "closed" / "unchanged"), `shares_change`, `shares_change_pct`. Synthesizes 0-share "closed" records for prior holdings absent in current quarter.
+- ✅ CLI: `npx tsx src/scrape.ts 13f <ALIAS_OR_CIK> [--save]` — single-fund 13F (e.g., `13f berkshire --save`)
+- ✅ CLI: `npx tsx src/scrape.ts 13f-feed [days] [--save]` — recent 13F filings across all funds (default 30 days, max 25 funds)
+- ✅ CLI: `npx tsx src/scrape.ts funds` — list 10 tracked fund aliases (berkshire, blackrock, vanguard, bridgewater, citadel, point72, deshaw, renaissance, twosigma, millennium)
+- ✅ **42 Berkshire Hathaway 13F holdings** in `institutional_holdings` collection (Q4 2025), all with correct US tickers, consolidated to one row per security (110 raw entries → 42 aggregated)
+- ✅ **47 entries in `cusip_map` cache** (42 OpenFIGI hits + 5 from EDGAR name fallback); subsequent scrapes hit cache instead of re-fetching
+- ✅ `firestore.ts` made robust to launch context — service-account.json path resolves relative to module location (`import.meta.url`), not cwd. Required for Claude Desktop spawning the MCP server from a different working directory.
+- ✅ `firestore.ts` adds `saveInstitutionalHoldings`, exports `getLiveDb`, `getDbIfLive` for use by scraper modules
+- ✅ MCP server registered in Claude Desktop's `claude_desktop_config.json` (sandboxed Microsoft Store path) — **end-to-end test in progress when this doc was last updated**
+
 ## What's Open / Next Up
 
 In rough priority order:
 
-1. **Fix the multi-owner parsing bug in form4** (`officer_name: "unknown"` for 10%+ owner filings — task tracked, see code in `src/scrapers/form4.ts`).
-2. **Port the 13F scraper** (institutional holdings). Same EDGAR XML pattern as form4, lower complexity than Senate/House.
-3. **Port the Senate scraper** (HTML parsing, browser-flavored — needs `jsdom` + the existing `tough-cookie` jar).
-4. **Port the House scraper** (PDF parsing, trickiest of the four).
-5. **Add the `bioguide_id` catalog** for congressional member enrichment. Spec already exists in `C:\CapitalEdge\CONGRESS_DATA_PIPELINE.md`.
-6. **Implement remaining v1 tools:** `get_member_profile`, `get_congressional_trades`, `get_institutional_holdings`, `get_company_filings_summary`. Full design in `TOOL_DESIGN.md`.
-7. **Deploy v1.0 as a remote MCP server.** Probably Cloud Run or Firebase Functions in the `capitaledge-api` project. Needs the Blaze plan upgrade.
-8. **Commercial: brand, domain, customer validation, pricing, marketing site.** Not engineering. Don't build deployment infrastructure ahead of customer interest.
+1. **Verify MCP server works end-to-end via Claude Desktop.** Config has been added to `claude_desktop_config.json` (sandboxed path: `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\claude_desktop_config.json`). After Claude Desktop restart, ask Claude something like "show me recent Apple insider trades" — it should call `get_insider_transactions`, hit live Firestore, return 76 records. **In progress when this doc was last updated.** First-time call may surface a Firestore composite-index error with a one-click creation URL — normal Firestore behavior, click the URL, wait a minute, retry.
+2. **Run `13f-feed 30 --save`** to populate institutional holdings beyond Berkshire — should yield several hundred holdings across BlackRock, Bridgewater, Citadel, Renaissance, Two Sigma, Millennium, Point72, etc. With OpenFIGI cache primed from Berkshire, ticker enrichment for these funds is mostly cache hits.
+3. **Fix the multi-owner parsing bug in form4** (`officer_name: "unknown"` for 10%+ owner filings — task #16, see code in `src/scrapers/form4.ts`).
+4. **Port the Senate scraper** (HTML parsing, browser-flavored — needs `jsdom` + the existing `tough-cookie` jar).
+5. **Port the House scraper** (PDF parsing, trickiest of the four).
+6. **Add the `bioguide_id` catalog** for congressional member enrichment. Spec already exists in `C:\CapitalEdge\CONGRESS_DATA_PIPELINE.md`.
+7. **Implement remaining v1 tools:** `get_member_profile`, `get_congressional_trades`, `get_institutional_holdings`, `get_company_filings_summary`. Full design in `TOOL_DESIGN.md`.
+8. **Deploy v1.0 as a remote MCP server.** Probably Cloud Run or Firebase Functions in the `capitaledge-api` project. Needs the Blaze plan upgrade.
+9. **Commercial: brand, domain, customer validation, pricing, marketing site.** Not engineering. Don't build deployment infrastructure ahead of customer interest.
 
 ## Files In This Project
 
@@ -63,9 +87,12 @@ In rough priority order:
 - `src/tools/index.ts` — registry of registered tools
 - `src/tools/insider-transactions.ts` — first MCP tool (definition + handler + input validation)
 - `src/scrapers/form4.ts` — Node/TS port of the Form 4 scraper
-- `src/scrape.ts` — CLI runner for scrapers (`ping`, `form4`, `form4-feed`)
-- `src/firestore.ts` — data layer with auto-detected stub vs live mode, plus `saveInsiderTransactions` and `pingFirestore`
-- `src/types.ts` — shared types (`ResultEnvelope`, `InsiderTransaction`, etc.)
+- `src/scrapers/13f.ts` — Node/TS port of the 13F scraper with sub-account aggregation, top-50 filter, position-change calc, closed-position synthesis (Day 2)
+- `src/openfigi.ts` — OpenFIGI CUSIP→ticker enrichment with US-exchange preference and Firestore write-through cache (Day 2)
+- `src/sec-tickers.ts` — EDGAR `company_tickers.json` name fallback for CINS-coded foreign-domiciled CUSIPs (Day 2)
+- `src/scrape.ts` — CLI runner for scrapers (`ping`, `form4`, `form4-feed`, `13f`, `13f-feed`, `funds`)
+- `src/firestore.ts` — data layer with auto-detected stub vs live mode; `saveInsiderTransactions`, `saveInstitutionalHoldings`, `pingFirestore`, `getLiveDb`, `getDbIfLive`
+- `src/types.ts` — shared types (`ResultEnvelope`, `InsiderTransaction`, `InstitutionalHolding`, etc.)
 - `package.json` — dependencies and scripts
 - `tsconfig.json` — TypeScript config (strict mode, ES2022, NodeNext)
 - `.gitignore` — excludes `secrets/`, `node_modules/`, `dist/`
@@ -142,4 +169,4 @@ npm run dev                                    # boots MCP server in LIVE MODE
 
 ## Last Updated
 
-April 28, 2026 — end of build session. 6.5 hours from project creation to first real data flowing end-to-end.
+April 29, 2026 — Day 2, mid-session. 13F scraper landed end-to-end with full enrichment (OpenFIGI + EDGAR fallback), 42 Berkshire holdings cleanly in Firestore, MCP server registered in Claude Desktop's config and about to be tested via the desktop app. If a fresh session is reading this and the test hasn't happened yet, the immediate next move is item 1 in "What's Open / Next Up" above.

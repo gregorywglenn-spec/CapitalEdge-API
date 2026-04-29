@@ -15,14 +15,25 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type {
   InsiderTransaction,
   InsiderTransactionsQuery,
+  InstitutionalHolding,
 } from "./types.js";
 
+// Resolve service-account.json relative to the project root, not cwd. This
+// matters when the server is launched by an MCP client (Claude Desktop, etc.)
+// whose working directory is not necessarily our project folder.
+//
+// In dev (tsx running src/firestore.ts), this module lives at <root>/src.
+// In prod (node running dist/firestore.js), it lives at <root>/dist.
+// Either way, project root is one level up.
+const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = resolve(MODULE_DIR, "..");
 const SERVICE_ACCOUNT_PATH = resolve(
-  process.cwd(),
+  PROJECT_ROOT,
   "secrets/service-account.json",
 );
 
@@ -41,7 +52,15 @@ type FirestoreQuery = import("firebase-admin/firestore").Query;
 
 let liveDb: FirestoreInstance | null = null;
 
-async function getLiveDb(): Promise<FirestoreInstance> {
+/**
+ * Get the live Firestore instance, initializing the SDK on first call.
+ * Throws if called in stub mode (no service account).
+ *
+ * Exported so other modules (scrapers, etc.) can pass the db handle into
+ * helpers that take an optional Firestore. Use `getDbIfLive()` if you want
+ * a null-or-db result without throwing.
+ */
+export async function getLiveDb(): Promise<FirestoreInstance> {
   if (liveDb) return liveDb;
 
   const { cert, initializeApp, getApps } = await import("firebase-admin/app");
@@ -58,6 +77,15 @@ async function getLiveDb(): Promise<FirestoreInstance> {
 
   liveDb = getFirestore(app);
   return liveDb;
+}
+
+/**
+ * Returns the live Firestore instance, or null in stub mode.
+ * Convenient for code paths that work with-or-without live data.
+ */
+export async function getDbIfLive(): Promise<FirestoreInstance | null> {
+  if (isStubMode()) return null;
+  return getLiveDb();
 }
 
 // ─── Public query API ───────────────────────────────────────────────────────
@@ -160,6 +188,45 @@ export async function saveInsiderTransactions(
     const chunk = trades.slice(i, i + BATCH_SIZE);
     for (const trade of chunk) {
       batch.set(collection.doc(trade.id), trade, { merge: true });
+    }
+    await batch.commit();
+    saved += chunk.length;
+  }
+
+  return { saved, collection: COLLECTION };
+}
+
+/**
+ * Save scraped institutional holdings to Firestore.
+ *
+ * Each record uses its `id` as the document key (`13f-{fundCik}-{cusip}-
+ * {quarter}`), so re-running a scrape for the same filing is idempotent.
+ *
+ * Throws if called in stub mode (no service account).
+ */
+export async function saveInstitutionalHoldings(
+  holdings: InstitutionalHolding[],
+): Promise<{ saved: number; collection: string }> {
+  if (isStubMode()) {
+    throw new Error(
+      "Cannot save to Firestore in stub mode (no service account at secrets/service-account.json)",
+    );
+  }
+  const COLLECTION = "institutional_holdings";
+  if (holdings.length === 0) {
+    return { saved: 0, collection: COLLECTION };
+  }
+
+  const db = await getLiveDb();
+  const collection = db.collection(COLLECTION);
+  const BATCH_SIZE = 400;
+  let saved = 0;
+
+  for (let i = 0; i < holdings.length; i += BATCH_SIZE) {
+    const batch = db.batch();
+    const chunk = holdings.slice(i, i + BATCH_SIZE);
+    for (const holding of chunk) {
+      batch.set(collection.doc(holding.id), holding, { merge: true });
     }
     await batch.commit();
     saved += chunk.length;

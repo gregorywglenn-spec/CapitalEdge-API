@@ -77,3 +77,68 @@ export interface InsiderTransactionsQuery {
   sort_order?: "desc" | "asc";
   limit?: number;
 }
+
+// ─── Institutional holdings (13F) ───────────────────────────────────────────
+
+/**
+ * One position held by an institutional investment manager, sourced from a
+ * Form 13F-HR filing. Each record represents (fund, security, quarter).
+ *
+ * `position_change`, `shares_change`, and `shares_change_pct` are computed
+ * during ingestion by comparing this quarter's holding to the same fund's
+ * prior-quarter holding for the same CUSIP. On first ingestion (no prior
+ * data in Firestore), all positions show position_change="new".
+ *
+ * `ticker` is enriched via OpenFIGI CUSIP→ticker lookup. Empty string when
+ * no mapping is available (private securities, foreign issuers without a
+ * US ticker, etc).
+ */
+export interface InstitutionalHolding {
+  id: string;
+  fund_name: string;
+  fund_cik: string;
+  issuer_name: string;
+  cusip: string;
+  ticker: string;
+  share_type: string;
+  investment_discretion: string | null;
+  shares_held: number;
+  market_value: number;
+  market_value_thousands: number;
+  quarter: string;
+  filing_date: string;
+  position_change:
+    | "new"
+    | "increased"
+    | "decreased"
+    | "closed"
+    | "unchanged"
+    | null;
+  shares_change: number | null;
+  shares_change_pct: number | null;
+  accession_number: string;
+  filing_url: string;
+  data_source: "SEC_EDGAR_13F";
+}
+
+/**
+ * Validated query parameters for get_institutional_holdings.
+ * Matches the inputSchema declared in tools/institutional-holdings.ts (TBD).
+ */
+export interface InstitutionalHoldingsQuery {
+  ticker?: string;
+  cusip?: string;
+  fund_name?: string;
+  fund_cik?: string;
+  quarter?: string;
+  position_change?:
+    | "new"
+    | "increased"
+    | "decreased"
+    | "closed"
+    | "unchanged";
+  min_value?: number;
+  sort_by?: "market_value" | "shares_held" | "shares_change_pct";
+  sort_order?: "desc" | "asc";
+  limit?: number;
+}
