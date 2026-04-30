@@ -15,6 +15,12 @@
  *   tsx src/scrape.ts senate [days]              Senate PTRs (default 7 days)
  *   tsx src/scrape.ts senate 7 --save            ...and write to Firestore
  *   tsx src/scrape.ts senate-ptr <PTR_ID>        One specific PTR (testing)
+ *   tsx src/scrape.ts house-index [days]         House PTR metadata (XML index, no PDFs)
+ *   tsx src/scrape.ts house-text <DOC_ID>        Dump raw extracted text from one PTR PDF
+ *   tsx src/scrape.ts house [days] [--extract] [--save]
+ *                                                House PTRs (default 7 days; --extract
+ *                                                fetches and parses each PDF; --save
+ *                                                writes parsed trades to Firestore)
  *
  * Diagnostics:
  *   tsx src/scrape.ts test-normalize             Smoke-test EDGAR name fallback
@@ -23,9 +29,6 @@
  *   tsx src/scrape.ts flush-cusip-cache          Clear cusip_map cache
  *
  * JSON results print to stdout, log lines to stderr — pipe-friendly.
- *
- * Future commands:
- *   tsx src/scrape.ts house                      House PTRs (PDF parsing — not yet ported)
  */
 
 import {
@@ -45,6 +48,10 @@ import {
   scrapeSenateLiveFeed,
   scrapeSenatePtrById,
 } from "./scrapers/senate.js";
+import {
+  dumpHousePtrText,
+  scrapeHouseLiveFeed,
+} from "./scrapers/house.js";
 import {
   dumpEdgar,
   lookupTickerByName,
@@ -225,6 +232,94 @@ const COMMANDS: Record<string, CliCommand> = {
         );
       }
       return trades;
+    },
+  },
+  "house-index": {
+    description:
+      "Fetch the House Clerk yearly XML index, filter to PTRs filed in the last N days (default 7), and return PTR metadata only — does NOT fetch or parse PDFs. Fast 'what was filed this week' query.",
+    run: async (args) => {
+      const positional = args.find((a) => !a.startsWith("--"));
+      const days = positional ? parseInt(positional, 10) : 7;
+      if (Number.isNaN(days) || days < 1) {
+        throw new Error("Days must be a positive integer");
+      }
+      const { ptrs } = await scrapeHouseLiveFeed({
+        lookbackDays: days,
+        extractTrades: false,
+      });
+      return ptrs;
+    },
+  },
+  "house-text": {
+    description:
+      "Fetch one House PTR PDF by DocID and dump the raw extracted text. Diagnostic for designing the parser. Usage: tsx src/scrape.ts house-text <DOC_ID> [year]",
+    run: async (args) => {
+      const positional = args.filter((a) => !a.startsWith("--"));
+      const docId = positional[0];
+      const yearArg = positional[1];
+      if (!docId) {
+        throw new Error(
+          "Usage: tsx src/scrape.ts house-text <DOC_ID> [year]\n" +
+            "DOC_ID is the numeric ID from a House PTR PDF URL like\n" +
+            "  https://disclosures-clerk.house.gov/public_disc/ptr-pdfs/2026/<DOC_ID>.pdf",
+        );
+      }
+      const year = yearArg ? parseInt(yearArg, 10) : undefined;
+      const { ptr, text } = await dumpHousePtrText(docId, year);
+      console.error(
+        `[house-text] ${ptr.first} ${ptr.last} (${ptr.state_district}) — filed ${ptr.filing_date}`,
+      );
+      console.error(`[house-text] PDF: ${ptr.pdf_url}`);
+      console.error(
+        `[house-text] Extracted ${text.length} chars. Raw text follows:\n${"=".repeat(72)}`,
+      );
+      // Raw text goes to stdout so it can be redirected to a file for closer
+      // inspection: `npx tsx src/scrape.ts house-text 12345 > ptr.txt`
+      return text;
+    },
+  },
+  house: {
+    description:
+      "Scrape House Clerk PTRs filed in the last N days (default 7). Without --extract: index-only mode, returns PTR metadata. With --extract: fetches each PDF and runs the parser (Phase 2 — currently returns empty trades arrays until parser is tuned). With --save: writes trades to Firestore. Optional --max=N to cap PTRs processed.",
+    run: async (args) => {
+      const positional = args.find((a) => !a.startsWith("--"));
+      const days = positional ? parseInt(positional, 10) : 7;
+      if (Number.isNaN(days) || days < 1) {
+        throw new Error("Days must be a positive integer");
+      }
+      const maxFlag = args.find((a) => a.startsWith("--max="));
+      const maxPtrs = maxFlag
+        ? parseInt(maxFlag.slice("--max=".length), 10)
+        : undefined;
+      if (maxPtrs !== undefined && (Number.isNaN(maxPtrs) || maxPtrs < 1)) {
+        throw new Error("--max=N must be a positive integer");
+      }
+      const extractTrades = args.includes("--extract");
+      const { ptrs, trades } = await scrapeHouseLiveFeed({
+        lookbackDays: days,
+        maxPtrs,
+        extractTrades,
+      });
+      if (hasSaveFlag(args)) {
+        if (!extractTrades) {
+          console.error(
+            "[save] --save requires --extract (nothing to save in index-only mode). Skipping Firestore write.",
+          );
+        } else if (trades.length === 0) {
+          console.error(
+            "[save] 0 trades parsed — Phase 2 parser is still a stub. Skipping Firestore write.",
+          );
+        } else {
+          console.error(
+            `[save] Writing ${trades.length} congressional trades to Firestore...`,
+          );
+          const result = await saveCongressionalTrades(trades);
+          console.error(
+            `[save] Saved ${result.saved} trades to ${result.collection}`,
+          );
+        }
+      }
+      return { ptrs_count: ptrs.length, trades_count: trades.length, ptrs, trades };
     },
   },
   "test-normalize": {
