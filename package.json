@@ -16,11 +16,15 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.4",
+    "cheerio": "^1.0.0",
     "fast-xml-parser": "^4.5.1",
-    "firebase-admin": "^13.0.1"
+    "fetch-cookie": "^3.1.0",
+    "firebase-admin": "^13.0.1",
+    "tough-cookie": "^5.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "@types/tough-cookie": "^4.0.5",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   },

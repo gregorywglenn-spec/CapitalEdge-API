@@ -18,6 +18,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
+  CongressionalTrade,
+  CongressionalTradesQuery,
   InsiderTransaction,
   InsiderTransactionsQuery,
   InstitutionalHolding,
@@ -289,6 +291,99 @@ export async function saveInstitutionalHoldings(
     const chunk = holdings.slice(i, i + BATCH_SIZE);
     for (const holding of chunk) {
       batch.set(collection.doc(holding.id), holding, { merge: true });
+    }
+    await batch.commit();
+    saved += chunk.length;
+  }
+
+  return { saved, collection: COLLECTION };
+}
+
+// ─── Congressional trades query ─────────────────────────────────────────────
+
+export async function queryCongressionalTrades(
+  query: CongressionalTradesQuery,
+): Promise<QueryResult<CongressionalTrade>> {
+  if (isStubMode()) {
+    // No stub data for congressional trades — returns empty in stub mode.
+    return { results: [], has_more: false };
+  }
+
+  const db = await getLiveDb();
+  let q: FirestoreQuery = db.collection("congressional_trades");
+
+  if (query.ticker) q = q.where("ticker", "==", query.ticker);
+  if (query.bioguide_id) q = q.where("bioguide_id", "==", query.bioguide_id);
+  if (query.chamber) q = q.where("chamber", "==", query.chamber);
+  if (query.transaction_type) {
+    q = q.where("transaction_type", "==", query.transaction_type);
+  }
+  if (query.owner) q = q.where("owner", "==", query.owner);
+  if (query.min_amount !== undefined) {
+    q = q.where("amount_min", ">=", query.min_amount);
+  }
+
+  const sortField = query.sort_by ?? "disclosure_date";
+  const sortOrder = query.sort_order ?? "desc";
+
+  if (query.since) q = q.where(sortField, ">=", query.since);
+  if (query.until) q = q.where(sortField, "<=", query.until);
+
+  q = q.orderBy(sortField, sortOrder);
+
+  const userLimit = query.limit ?? 50;
+
+  // Same substring-filter consideration as queryInsiderTransactionsLive: when
+  // member_name (substring filter) is set, pull a much larger Firestore window
+  // so the client-side filter sees the full universe.
+  const fetchLimit = query.member_name ? 5000 : userLimit + 1;
+  q = q.limit(fetchLimit);
+
+  const snap = await q.get();
+  let docs = snap.docs.map((d) => d.data() as CongressionalTrade);
+
+  if (query.member_name) {
+    const needle = query.member_name.toLowerCase();
+    docs = docs.filter((t) =>
+      (t.member_name ?? "").toLowerCase().includes(needle),
+    );
+  }
+
+  const has_more = docs.length > userLimit;
+  const results = docs.slice(0, userLimit);
+  return { results, has_more };
+}
+
+/**
+ * Save scraped congressional trades to Firestore. Idempotent — re-running
+ * the scraper on the same PTRs writes the same doc IDs (`senate-{ptrId}-{i}`
+ * or `house-{docId}-{i}`) with merge:true semantics.
+ *
+ * Throws if called in stub mode (no service account).
+ */
+export async function saveCongressionalTrades(
+  trades: CongressionalTrade[],
+): Promise<{ saved: number; collection: string }> {
+  if (isStubMode()) {
+    throw new Error(
+      "Cannot save to Firestore in stub mode (no service account at secrets/service-account.json)",
+    );
+  }
+  const COLLECTION = "congressional_trades";
+  if (trades.length === 0) {
+    return { saved: 0, collection: COLLECTION };
+  }
+
+  const db = await getLiveDb();
+  const collection = db.collection(COLLECTION);
+  const BATCH_SIZE = 400;
+  let saved = 0;
+
+  for (let i = 0; i < trades.length; i += BATCH_SIZE) {
+    const batch = db.batch();
+    const chunk = trades.slice(i, i + BATCH_SIZE);
+    for (const trade of chunk) {
+      batch.set(collection.doc(trade.id), trade, { merge: true });
     }
     await batch.commit();
     saved += chunk.length;

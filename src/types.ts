@@ -142,3 +142,69 @@ export interface InstitutionalHoldingsQuery {
   sort_order?: "desc" | "asc";
   limit?: number;
 }
+
+// ─── Congressional trades (STOCK Act PTRs) ──────────────────────────────────
+
+/**
+ * One disclosed congressional trade — a single line item from a Periodic
+ * Transaction Report filed under the STOCK Act. Each record is one
+ * (member, asset, transaction date) tuple.
+ *
+ * Senate PTRs come from the Senate eFD portal as HTML tables. House PTRs
+ * come from the House Clerk as PDFs (parser TBD). Both normalize to this
+ * shape so the MCP tool surface is uniform.
+ *
+ * STOCK Act mandates filing within 30 days of trade awareness or 45 days
+ * of the transaction itself, whichever is earlier. `reporting_lag_days`
+ * is computed against business days for clarity.
+ *
+ * `bioguide_id` is the permanent member identifier (e.g., "C001098" for
+ * Susan Collins). Populated from the unitedstates/congress-legislators
+ * catalog when that ingestion lands; empty for now.
+ */
+export interface CongressionalTrade {
+  id: string;
+  ticker: string;
+  asset_name: string;
+  asset_type: string;
+  member_name: string;
+  member_first: string;
+  member_last: string;
+  bioguide_id: string;
+  chamber: "senate" | "house";
+  party: string;
+  state: string;
+  state_district: string;
+  office: string;
+  transaction_type: "buy" | "sell";
+  transaction_date: string;
+  disclosure_date: string;
+  reporting_lag_days: number | null;
+  amount_range: string;
+  amount_min: number;
+  amount_max: number;
+  owner: string;
+  comment: string;
+  ptr_id: string;
+  report_url: string;
+  data_source: "SENATE_EFD_PTR" | "HOUSE_CLERK_PTR";
+}
+
+/**
+ * Validated query parameters for get_congressional_trades.
+ * Matches the inputSchema declared in tools/congressional-trades.ts (TBD).
+ */
+export interface CongressionalTradesQuery {
+  ticker?: string;
+  member_name?: string;
+  bioguide_id?: string;
+  chamber?: "senate" | "house";
+  transaction_type?: "buy" | "sell";
+  owner?: "Self" | "Spouse" | "Joint" | "Dependent";
+  since?: string;
+  until?: string;
+  min_amount?: number;
+  sort_by?: "disclosure_date" | "transaction_date";
+  sort_order?: "desc" | "asc";
+  limit?: number;
+}

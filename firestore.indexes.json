@@ -15,6 +15,14 @@
         { "fieldPath": "ticker", "order": "ASCENDING" },
         { "fieldPath": "market_value", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "congressional_trades",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ticker", "order": "ASCENDING" },
+        { "fieldPath": "disclosure_date", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

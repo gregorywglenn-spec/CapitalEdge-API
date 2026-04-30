@@ -12,17 +12,26 @@
  *   tsx src/scrape.ts 13f-feed [days]            Recent 13F filings across all funds
  *   tsx src/scrape.ts 13f-feed 30 --save         ...and write to Firestore
  *   tsx src/scrape.ts funds                      List tracked fund aliases
+ *   tsx src/scrape.ts senate [days]              Senate PTRs (default 7 days)
+ *   tsx src/scrape.ts senate 7 --save            ...and write to Firestore
+ *   tsx src/scrape.ts senate-ptr <PTR_ID>        One specific PTR (testing)
+ *
+ * Diagnostics:
+ *   tsx src/scrape.ts test-normalize             Smoke-test EDGAR name fallback
+ *   tsx src/scrape.ts search-edgar <SUBSTRING>   Search EDGAR catalog
+ *   tsx src/scrape.ts dump-edgar                 Dump EDGAR catalog stats
+ *   tsx src/scrape.ts flush-cusip-cache          Clear cusip_map cache
  *
  * JSON results print to stdout, log lines to stderr — pipe-friendly.
  *
- * Future commands (one per ported scraper):
- *   tsx src/scrape.ts senate                     Senate PTRs
- *   tsx src/scrape.ts house                      House PTRs
+ * Future commands:
+ *   tsx src/scrape.ts house                      House PTRs (PDF parsing — not yet ported)
  */
 
 import {
   getDbIfLive,
   pingFirestore,
+  saveCongressionalTrades,
   saveInsiderTransactions,
   saveInstitutionalHoldings,
 } from "./firestore.js";
@@ -32,6 +41,10 @@ import {
   scrape13FByFund,
   scrape13FLiveFeed,
 } from "./scrapers/13f.js";
+import {
+  scrapeSenateLiveFeed,
+  scrapeSenatePtrById,
+} from "./scrapers/senate.js";
 import {
   dumpEdgar,
   lookupTickerByName,
@@ -156,6 +169,62 @@ const COMMANDS: Record<string, CliCommand> = {
     description: "List the tracked institutional managers and their aliases",
     run: async () => {
       return listTrackedFunds();
+    },
+  },
+  senate: {
+    description:
+      "Scrape Senate eFD Periodic Transaction Reports (PTRs) for the last N days (default 7; add --save to write to Firestore, --max=N to cap PTRs processed for testing). Each PTR may contain multiple equity trades.",
+    run: async (args) => {
+      const positional = args.find((a) => !a.startsWith("--"));
+      const days = positional ? parseInt(positional, 10) : 7;
+      if (Number.isNaN(days) || days < 1) {
+        throw new Error("Days must be a positive integer");
+      }
+      const maxFlag = args.find((a) => a.startsWith("--max="));
+      const maxPtrs = maxFlag
+        ? parseInt(maxFlag.slice("--max=".length), 10)
+        : undefined;
+      if (maxPtrs !== undefined && (Number.isNaN(maxPtrs) || maxPtrs < 1)) {
+        throw new Error("--max=N must be a positive integer");
+      }
+      const trades = await scrapeSenateLiveFeed({
+        lookbackDays: days,
+        maxPtrs,
+      });
+      if (hasSaveFlag(args)) {
+        console.error(
+          `[save] Writing ${trades.length} congressional trades to Firestore...`,
+        );
+        const result = await saveCongressionalTrades(trades);
+        console.error(
+          `[save] Saved ${result.saved} trades to ${result.collection}`,
+        );
+      }
+      return trades;
+    },
+  },
+  "senate-ptr": {
+    description:
+      "Scrape ONE specific Senate PTR by ID — useful for testing the parser against a known filing. Usage: tsx src/scrape.ts senate-ptr <PTR_ID> [--save]",
+    run: async (args) => {
+      const ptrId = args.find((a) => !a.startsWith("--"));
+      if (!ptrId) {
+        throw new Error(
+          "Usage: tsx src/scrape.ts senate-ptr <PTR_ID> [--save]\n" +
+            "PTR_ID is the UUID-like string from a Senate eFD URL like efdsearch.senate.gov/search/view/ptr/<PTR_ID>/",
+        );
+      }
+      const trades = await scrapeSenatePtrById(ptrId);
+      if (hasSaveFlag(args)) {
+        console.error(
+          `[save] Writing ${trades.length} congressional trades to Firestore...`,
+        );
+        const result = await saveCongressionalTrades(trades);
+        console.error(
+          `[save] Saved ${result.saved} trades to ${result.collection}`,
+        );
+      }
+      return trades;
     },
   },
   "test-normalize": {

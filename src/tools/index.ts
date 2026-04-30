@@ -6,6 +6,7 @@
  */
 
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import * as congressionalTrades from "./congressional-trades.js";
 import * as insiderTransactions from "./insider-transactions.js";
 import * as institutionalHoldings from "./institutional-holdings.js";
 
@@ -14,7 +15,11 @@ export interface ToolModule {
   handler: (args: unknown) => Promise<unknown>;
 }
 
-export const TOOLS: ToolModule[] = [insiderTransactions, institutionalHoldings];
+export const TOOLS: ToolModule[] = [
+  insiderTransactions,
+  institutionalHoldings,
+  congressionalTrades,
+];
 
 export function findTool(name: string): ToolModule | undefined {
   return TOOLS.find((t) => t.definition.name === name);
