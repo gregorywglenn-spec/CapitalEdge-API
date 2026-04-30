@@ -132,9 +132,15 @@ function validateAndNormalize(raw: unknown): InsiderTransactionsQuery {
   const out: InsiderTransactionsQuery = {};
 
   if (args.ticker !== undefined) {
-    if (typeof args.ticker !== "string" || !/^[A-Za-z]{1,5}$/.test(args.ticker)) {
+    // Permissive — accepts AAPL, BRK.A, BRK-B, HEI/A, LEN/B, BF.B, etc.
+    // Letters first, then up to 9 more chars including digits, period, slash,
+    // hyphen for share-class designators.
+    if (
+      typeof args.ticker !== "string" ||
+      !/^[A-Za-z][A-Za-z0-9./-]{0,9}$/.test(args.ticker)
+    ) {
       throw new Error(
-        `INVALID_TICKER: '${String(args.ticker)}' — expected 1–5 letters`,
+        `INVALID_TICKER: '${String(args.ticker)}' — expected 1-10 chars, letters first, optional . / - for share classes`,
       );
     }
     out.ticker = args.ticker.toUpperCase();

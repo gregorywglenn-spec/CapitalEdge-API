@@ -32,6 +32,12 @@ import {
   scrape13FByFund,
   scrape13FLiveFeed,
 } from "./scrapers/13f.js";
+import {
+  dumpEdgar,
+  lookupTickerByName,
+  normalizeName,
+  searchEdgar,
+} from "./sec-tickers.js";
 
 interface CliCommand {
   description: string;
@@ -150,6 +156,92 @@ const COMMANDS: Record<string, CliCommand> = {
     description: "List the tracked institutional managers and their aliases",
     run: async () => {
       return listTrackedFunds();
+    },
+  },
+  "test-normalize": {
+    description:
+      "Smoke-test the EDGAR name fallback against given issuer names. Shows normalized form and EDGAR match (if any). Usage: tsx src/scrape.ts test-normalize \"CYBERARK SOFTWARE LTD\" \"JOHNSON CTLS INTL PLC\" ...",
+    run: async (args) => {
+      const names = args.filter((a) => !a.startsWith("--"));
+      if (names.length === 0) {
+        // Default: run the canary set known to fail before the fixes
+        names.push(
+          "CYBERARK SOFTWARE LTD",
+          "JOHNSON CTLS INTL PLC",
+          "ACCENTURE PLC IRELAND",
+          "COOPER COS INC",
+          "HOLOGIC INC",
+          "CONFLUENT INC",
+          "AVIDITY BIOSCIENCES INC",
+          "DAYFORCE INC",
+          "JAMF HLDG CORP",
+          "EXACT SCIENCES CORP",
+          "DUN & BRADSTREET CORP DEL NE",
+          "OASIS PETE INC NEW",
+          "AMERICAN ELEC PWR CO INC",
+        );
+      }
+      const out: Array<{
+        input: string;
+        normalized: string;
+        edgar_ticker: string;
+      }> = [];
+      for (const name of names) {
+        const normalized = normalizeName(name);
+        const ticker = await lookupTickerByName(name);
+        out.push({ input: name, normalized, edgar_ticker: ticker });
+      }
+      return out;
+    },
+  },
+  "dump-edgar": {
+    description:
+      "Diagnostic: print stats and a sample of EDGAR's company_tickers.json contents to verify the catalog loaded correctly. No arguments.",
+    run: async () => {
+      return await dumpEdgar(20);
+    },
+  },
+  "search-edgar": {
+    description:
+      "Diagnostic: search EDGAR's company_tickers.json for entries containing a substring. Use to investigate why test-normalize reports a MISS for a given company. Usage: tsx src/scrape.ts search-edgar HOLOGIC",
+    run: async (args) => {
+      const term = args.find((a) => !a.startsWith("--"));
+      if (!term) {
+        throw new Error(
+          "Usage: tsx src/scrape.ts search-edgar <SUBSTRING>\n" +
+            'Example: tsx src/scrape.ts search-edgar "HOLOGIC"',
+        );
+      }
+      return await searchEdgar(term);
+    },
+  },
+  "flush-cusip-cache": {
+    description:
+      "Delete all entries in the cusip_map Firestore cache so the next 13f run re-resolves them. Use after changing OpenFIGI selection logic or EDGAR name-fallback normalization.",
+    run: async () => {
+      const db = await getDbIfLive();
+      if (!db) {
+        throw new Error(
+          "flush-cusip-cache requires LIVE mode (no service account at secrets/service-account.json)",
+        );
+      }
+      const COLLECTION = "cusip_map";
+      const collection = db.collection(COLLECTION);
+      let deleted = 0;
+      const BATCH_SIZE = 400;
+      // Loop: read up to BATCH_SIZE docs, batch-delete, repeat until empty.
+      // Avoids loading the whole collection into memory at once.
+      for (;;) {
+        const snap = await collection.limit(BATCH_SIZE).get();
+        if (snap.empty) break;
+        const batch = db.batch();
+        for (const doc of snap.docs) batch.delete(doc.ref);
+        await batch.commit();
+        deleted += snap.size;
+        console.error(`[flush] Deleted ${deleted} cusip_map entries so far...`);
+      }
+      console.error(`[flush] DONE — ${deleted} entries deleted from ${COLLECTION}`);
+      return { collection: COLLECTION, deleted };
     },
   },
 };

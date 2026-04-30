@@ -156,14 +156,33 @@ export function parseForm4Xml(
   const doc = parsed.ownershipDocument;
   if (!doc) return [];
 
-  const reportingOwner = doc.reportingOwner;
+  // Handle the multi-owner case. 10%+ holder / fund-entity filings often have
+  // multiple reportingOwner elements — the primary entity plus sub-accounts.
+  // fast-xml-parser returns an array in that case; without this guard, every
+  // such filing's officer_name silently became "unknown" (caught April 29 in
+  // the Avis Budget Group sell-spree records).
+  const reportingOwnerRaw = doc.reportingOwner;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const reportingOwners: any[] = Array.isArray(reportingOwnerRaw)
+    ? reportingOwnerRaw
+    : reportingOwnerRaw
+      ? [reportingOwnerRaw]
+      : [];
+
+  const ownerNames = reportingOwners
+    .map((o) => read(o?.reportingOwnerId?.rptOwnerName))
+    .filter((n) => n);
   const officerName =
-    read(reportingOwner?.reportingOwnerId?.rptOwnerName) || "unknown";
-  const isDirector =
-    read(reportingOwner?.reportingOwnerRelationship?.isDirector) === "1";
+    ownerNames.length > 0 ? ownerNames.join(" / ") : "unknown";
+
+  const titles = reportingOwners
+    .map((o) => read(o?.reportingOwnerRelationship?.officerTitle))
+    .filter((t) => t);
+  const isDirector = reportingOwners.some(
+    (o) => read(o?.reportingOwnerRelationship?.isDirector) === "1",
+  );
   const officerTitle =
-    read(reportingOwner?.reportingOwnerRelationship?.officerTitle) ||
-    (isDirector ? "Director" : "");
+    titles.length > 0 ? titles[0]! : isDirector ? "Director" : "";
 
   const issuer = doc.issuer;
   const ticker = read(issuer?.issuerTradingSymbol).toUpperCase();

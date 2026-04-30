@@ -21,6 +21,7 @@ import type {
   InsiderTransaction,
   InsiderTransactionsQuery,
   InstitutionalHolding,
+  InstitutionalHoldingsQuery,
 } from "./types.js";
 
 // Resolve service-account.json relative to the project root, not cwd. This
@@ -194,6 +195,55 @@ export async function saveInsiderTransactions(
   }
 
   return { saved, collection: COLLECTION };
+}
+
+// ─── Institutional holdings (13F) query ─────────────────────────────────────
+
+export async function queryInstitutionalHoldings(
+  query: InstitutionalHoldingsQuery,
+): Promise<QueryResult<InstitutionalHolding>> {
+  if (isStubMode()) {
+    // No stub data for 13F yet — returns empty in stub mode. Tool descriptions
+    // make it clear the data only exists once a 13f scrape has been run.
+    return { results: [], has_more: false };
+  }
+
+  const db = await getLiveDb();
+  let q: FirestoreQuery = db.collection("institutional_holdings");
+
+  if (query.ticker) q = q.where("ticker", "==", query.ticker);
+  if (query.cusip) q = q.where("cusip", "==", query.cusip);
+  if (query.fund_cik) q = q.where("fund_cik", "==", query.fund_cik);
+  if (query.quarter) q = q.where("quarter", "==", query.quarter);
+  if (query.position_change) {
+    q = q.where("position_change", "==", query.position_change);
+  }
+  if (query.min_value !== undefined) {
+    q = q.where("market_value", ">=", query.min_value);
+  }
+
+  const sortField = query.sort_by ?? "market_value";
+  const sortOrder = query.sort_order ?? "desc";
+  q = q.orderBy(sortField, sortOrder);
+
+  const limit = query.limit ?? 50;
+  q = q.limit(limit + 1);
+
+  const snap = await q.get();
+  let docs = snap.docs.map((d) => d.data() as InstitutionalHolding);
+
+  // fund_name substring match is client-side — Firestore doesn't support
+  // contains/regex on strings.
+  if (query.fund_name) {
+    const needle = query.fund_name.toLowerCase();
+    docs = docs.filter((h) =>
+      (h.fund_name ?? "").toLowerCase().includes(needle),
+    );
+  }
+
+  const has_more = docs.length > limit;
+  const results = docs.slice(0, limit);
+  return { results, has_more };
 }
 
 /**

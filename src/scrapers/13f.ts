@@ -26,8 +26,8 @@
  */
 
 import { XMLParser } from "fast-xml-parser";
-import { lookupCusips } from "../openfigi.js";
-import { lookupTickerByName } from "../sec-tickers.js";
+import { lookupCusips, searchOpenFigiByName } from "../openfigi.js";
+import { lookupTickerByName, namesMatch } from "../sec-tickers.js";
 import type { InstitutionalHolding } from "../types.js";
 
 // ─── Config ─────────────────────────────────────────────────────────────────
@@ -219,20 +219,26 @@ export function parse13FXml(
   for (const entry of entries) {
     const nameOfIssuer = read(entry.nameOfIssuer);
     const cusip = read(entry.cusip);
-    const valueThousands = parseInt(read(entry.value), 10) || 0;
+    // 13F XML <value> field: SEC instructions historically said "report in
+    // thousands (omit last three digits)," but modern filers (2023+) reliably
+    // report the FULL dollar amount. Treating as dollars matches actual
+    // filings; older "thousands" filings will report values that look small
+    // but the convention has shifted. The aggregator-of-record (OpenFIGI,
+    // Whalewisdom, etc.) all treat value as dollars now.
+    const valueDollars = parseInt(read(entry.value), 10) || 0;
     const shares = parseInt(read(entry.shrsOrPrnAmt?.sshPrnamt), 10) || 0;
     const shareType = read(entry.shrsOrPrnAmt?.sshPrnamtType);
     const discretion = read(entry.investmentDiscretion);
     const putCall = read(entry.putCall);
 
     if (putCall === "Put" || putCall === "Call") continue;
-    if (!nameOfIssuer || !cusip || valueThousands === 0) continue;
+    if (!nameOfIssuer || !cusip || valueDollars === 0) continue;
 
     const existing = byCusip.get(cusip);
     if (existing) {
       existing.shares_held += shares;
-      existing.market_value += valueThousands * 1000;
-      existing.market_value_thousands += valueThousands;
+      existing.market_value += valueDollars;
+      existing.market_value_thousands = Math.round(existing.market_value / 1000);
       // Keep first non-null discretion seen
       if (!existing.investment_discretion && discretion) {
         existing.investment_discretion = discretion;
@@ -248,8 +254,8 @@ export function parse13FXml(
         share_type: shareType || "SH",
         investment_discretion: discretion || null,
         shares_held: shares,
-        market_value: valueThousands * 1000,
-        market_value_thousands: valueThousands,
+        market_value: valueDollars,
+        market_value_thousands: Math.round(valueDollars / 1000),
         quarter: meta.period,
         filing_date: meta.filingDate,
         position_change: null, // computed later
@@ -477,18 +483,37 @@ export async function scrape13FByFund(
     .sort((a, b) => b.market_value - a.market_value)
     .slice(0, topN);
 
-  // Enrich with tickers — primary path is OpenFIGI by CUSIP
+  // Enrich with tickers — primary path is OpenFIGI by CUSIP. The lookup
+  // returns both ticker AND OpenFIGI's issuer name so we can detect wrong-
+  // issuer mappings (Bloomberg occasionally maps the wrong CUSIP to a real
+  // ticker — e.g., CUSIP 023139884 is Ambac Financial but OpenFIGI returns
+  // "Overseas Shipholding Group" / OSG). The 13F filer's `nameOfIssuer`
+  // is authoritative for who the security IS; if OpenFIGI's name doesn't
+  // match the 13F's expected issuer, reject the ticker and let tier 2/3
+  // (EDGAR / OpenFIGI search-by-name) try.
   const cusips = top.map((h) => h.cusip);
   const tickerMap = await lookupCusips(cusips, options.db ?? undefined);
   for (const holding of top) {
-    holding.ticker = tickerMap.get(holding.cusip) ?? "";
+    const result = tickerMap.get(holding.cusip);
+    if (!result?.ticker) {
+      holding.ticker = "";
+      continue;
+    }
+    if (namesMatch(holding.issuer_name, result.name)) {
+      holding.ticker = result.ticker;
+    } else {
+      console.error(
+        `[13f]   ${holding.cusip} (${holding.issuer_name}): rejected ticker "${result.ticker}" — OpenFIGI name "${result.name}" doesn't match 13F issuer`,
+      );
+      holding.ticker = "";
+    }
   }
 
-  // Fallback path: for any holding still empty (typical for foreign-domiciled
-  // CINS-coded issuers like Chubb, AON, Allegion), look up by issuer name in
-  // EDGAR's company_tickers.json. Updates the cusip_map cache when resolved
-  // so subsequent runs hit the cache instead of re-fetching.
-  const stillEmpty = top.filter((h) => !h.ticker && h.issuer_name);
+  // Tier 2 fallback: for any holding still empty (typical for foreign-
+  // domiciled CINS-coded issuers like Chubb, AON, Allegion), look up by
+  // issuer name in EDGAR's company_tickers_exchange.json catalog. Free,
+  // in-memory, fast.
+  let stillEmpty = top.filter((h) => !h.ticker && h.issuer_name);
   if (stillEmpty.length > 0) {
     console.error(
       `[13f] ${stillEmpty.length} holdings empty after CUSIP lookup — trying name fallback against EDGAR`,
@@ -499,10 +524,8 @@ export async function scrape13FByFund(
         if (ticker) {
           holding.ticker = ticker;
           console.error(
-            `[13f]   ${holding.cusip} (${holding.issuer_name}) → ${ticker} via name`,
+            `[13f]   ${holding.cusip} (${holding.issuer_name}) → ${ticker} via EDGAR name`,
           );
-          // Update cusip_map cache with the resolved ticker so we don't
-          // rerun the fallback for this CUSIP next time
           if (options.db) {
             await options.db
               .collection("cusip_map")
@@ -523,7 +546,63 @@ export async function scrape13FByFund(
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error(
-          `[13f]   ${holding.cusip} (${holding.issuer_name}): name fallback failed — ${msg}`,
+          `[13f]   ${holding.cusip} (${holding.issuer_name}): EDGAR name fallback failed — ${msg}`,
+        );
+      }
+    }
+  }
+
+  // Tier 3 fallback: for holdings STILL empty after EDGAR, query OpenFIGI's
+  // search-by-name endpoint. SEC's catalog has known gaps (HOLX, CYBR, CFLT,
+  // JAMF, etc. are missing despite being real US-listed equities) and some
+  // wrong mappings (RNA → "Atrium Therapeutics" not Avidity, PSTG →
+  // "Everpure" not Pure Storage). OpenFIGI's search uses Bloomberg's
+  // comprehensive security database — closes the remaining coverage gap.
+  //
+  // Rate-limited (5 req/min free, 25 req/min with API key) so this only
+  // fires for the small number of names that EDGAR couldn't resolve.
+  stillEmpty = top.filter((h) => !h.ticker && h.issuer_name);
+  if (stillEmpty.length > 0) {
+    console.error(
+      `[13f] ${stillEmpty.length} holdings still empty after EDGAR — trying OpenFIGI search-by-name`,
+    );
+    for (const holding of stillEmpty) {
+      try {
+        const match = await searchOpenFigiByName(holding.issuer_name);
+        if (!match?.ticker) continue;
+        // Same name-validation rule as tier 1 — OpenFIGI's search endpoint
+        // can return tickers whose underlying name doesn't match what the
+        // 13F filer wrote. If they're clearly different companies, drop it.
+        if (!namesMatch(holding.issuer_name, match.name)) {
+          console.error(
+            `[13f]   ${holding.cusip} (${holding.issuer_name}): rejected search ticker "${match.ticker}" — OpenFIGI name "${match.name}" doesn't match`,
+          );
+          continue;
+        }
+        holding.ticker = match.ticker;
+        console.error(
+          `[13f]   ${holding.cusip} (${holding.issuer_name}) → ${match.ticker} via OpenFIGI search`,
+        );
+        if (options.db) {
+          await options.db
+            .collection("cusip_map")
+            .doc(holding.cusip)
+            .set(
+              {
+                cusip: holding.cusip,
+                ticker: match.ticker,
+                name: match.name ?? holding.issuer_name,
+                market_sector: null,
+                last_verified: new Date().toISOString(),
+                source: "openfigi_name_search",
+              },
+              { merge: true },
+            );
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(
+          `[13f]   ${holding.cusip} (${holding.issuer_name}): OpenFIGI search failed — ${msg}`,
         );
       }
     }
