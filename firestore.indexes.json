@@ -1,0 +1,21 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "insider_trades",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ticker", "order": "ASCENDING" },
+        { "fieldPath": "disclosure_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "institutional_holdings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ticker", "order": "ASCENDING" },
+        { "fieldPath": "market_value", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

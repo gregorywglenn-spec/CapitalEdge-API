@@ -133,15 +133,21 @@ async function queryInsiderTransactionsLive(
 
   q = q.orderBy(sortField, sortOrder);
 
-  const limit = query.limit ?? 50;
-  q = q.limit(limit + 1); // +1 to detect has_more
+  const userLimit = query.limit ?? 50;
+
+  // When a client-side substring filter is active (officer_name), we must
+  // pull a much larger Firestore window — otherwise the global-top-N
+  // truncation happens BEFORE the substring filter, and we silently miss
+  // valid matches that didn't rank in the first N rows. The 5000 ceiling
+  // is enough for v1's data volume (~hundreds of insider records) and
+  // protects against runaway memory on later growth. See v1.1 polish item
+  // for moving substring search to Firestore-side via tokenized indexes.
+  const fetchLimit = query.officer_name ? 5000 : userLimit + 1;
+  q = q.limit(fetchLimit);
 
   const snap = await q.get();
   let docs = snap.docs.map((d) => d.data() as InsiderTransaction);
 
-  // Officer name substring filter is done client-side. Firestore does not
-  // support `contains`/regex on strings, but the result set is small enough
-  // (<= limit + 1 rows) for in-memory filtering.
   if (query.officer_name) {
     const needle = query.officer_name.toLowerCase();
     docs = docs.filter((t) =>
@@ -149,8 +155,8 @@ async function queryInsiderTransactionsLive(
     );
   }
 
-  const has_more = docs.length > limit;
-  const results = docs.slice(0, limit);
+  const has_more = docs.length > userLimit;
+  const results = docs.slice(0, userLimit);
   return { results, has_more };
 }
 
@@ -226,14 +232,20 @@ export async function queryInstitutionalHoldings(
   const sortOrder = query.sort_order ?? "desc";
   q = q.orderBy(sortField, sortOrder);
 
-  const limit = query.limit ?? 50;
-  q = q.limit(limit + 1);
+  const userLimit = query.limit ?? 50;
+
+  // Same substring-filter consideration as queryInsiderTransactionsLive:
+  // when fund_name is set, we must pull a much larger Firestore window so
+  // the client-side substring filter sees the full universe. Without this,
+  // a query for "Berkshire" returns only the top-N global positions that
+  // happen to be Berkshire's — Berkshire's smaller positions silently miss.
+  // 5000 ceiling protects memory; sufficient for v1's ~thousands of records.
+  const fetchLimit = query.fund_name ? 5000 : userLimit + 1;
+  q = q.limit(fetchLimit);
 
   const snap = await q.get();
   let docs = snap.docs.map((d) => d.data() as InstitutionalHolding);
 
-  // fund_name substring match is client-side — Firestore doesn't support
-  // contains/regex on strings.
   if (query.fund_name) {
     const needle = query.fund_name.toLowerCase();
     docs = docs.filter((h) =>
@@ -241,8 +253,8 @@ export async function queryInstitutionalHoldings(
     );
   }
 
-  const has_more = docs.length > limit;
-  const results = docs.slice(0, limit);
+  const has_more = docs.length > userLimit;
+  const results = docs.slice(0, userLimit);
   return { results, has_more };
 }
 
