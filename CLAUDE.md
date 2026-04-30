@@ -31,6 +31,8 @@ This is the day-1 reading for any AI agent (Claude or otherwise) opening this pr
 - **Senate "paper PTR" amendments are a real but minor case.** Some PTR detail pages return an HTML wrapper around a PDF embed instead of a trade table. The current parser detects this via an `isPaperPtr()` heuristic and logs+skips. Not blocking v1 — most PTRs are electronic. Push to v1.1 if it ever becomes a meaningful percentage of disclosures (currently ~0% in observed runs).
 - **Vertical depth, not horizontal expansion.** The temptation when the hub starts working is to add medical data, legal data, sports data — more domains feels like more value. It's a trap. Every data domain has its own sources, normalization quirks, regulatory landscape, and customer profile. Going horizontal means becoming a mediocre lumberyard for everything instead of an excellent one for one thing. Bloomberg won by going deep on financial. Westlaw won by going deep on legal. UpToDate won by going deep on medical. Wolfram Alpha tried to be everything-engine and never became a real business. The hub stays inside US public-disclosure data forever; expansion happens *deeper into the same vertical* (Form 144, 13D/G, 8-K, lobbying, USAspending, FRED, FEC, FOIA) — not adjacent verticals. The moat (agent-native MCP design + data-quality discipline) doesn't transfer to medical or sports anyway. Greg's analogy: don't call a plumber to lay flooring; don't use the siding guy to install cabinets. Specialists win.
 - **Customer funnel is bottom-up, not top-down.** Free tier → indie devs → small fintechs → midsize firms → institutional. Don't optimize for institutional contracts in v1.0; optimize for indie devs *loving* the hub, because those devs become tech leads at small fintechs in 18 months and bring the hub with them. The free public-data cost structure (no Bloomberg-style licensing fees) is what makes this path economically viable. Quiver Quantitative followed exactly this path to a $2.6M raise.
+- **Owner-code regex for House PTRs must allow `\S`, not `[A-Z]` or even `[A-Za-z]`.** House PTR rows that involve a non-Self owner prefix the owner code (`SP` / `JT` / `DC`) directly onto the asset name with no separator: `SPApple`, `SPiShares`, `DCBJ`, `DCSTERIS`, `DCEMCOR`, `JTT.` (T. Rowe Price), `JTO'` (O'Reilly), `JT3M` (3M). The character right after the code can be uppercase, lowercase, a digit, a period, or an apostrophe — anything but whitespace. Initial regex `[A-Z][A-Z]` broke on lowercase (SPiShares) and digits. Second pass `[A-Za-z][A-Za-z]` broke on punctuation (JTT., JTO'). Final regex `^(SP|JT|DC)\S` accepts every observed case while correctly rejecting "JT Air" / "SP Plus" (legitimate non-owner-code phrases starting with those letters but separated by space). Captured during the House port — same shape will hit any future PDF-derived parser where columns aren't whitespace-delimited.
+- **PDF text extraction adds invisible quirks the parser must defend against.** Three real ones from House PTRs: (1) URL-shaped strings get auto-linkified — `Amazon.com` becomes `[Amazon.com](http://Amazon.com)` in the extracted text, even though the source PDF shows plain text. Cosmetic; doesn't break ticker resolution since AMZN is matched separately. (2) Long asset names that wrap to a second line emit a *phantom partial row* with `asset_type: "Stock"` (the literal word) instead of `"ST"` (the code) — seen in Cisneros JLL row 8, Salazar Whirlpool row 25, McCormick UnitedHealth row 16. The real row immediately follows with correct `asset_type`, so dedup is the v1.1 fix. (3) Multi-line member-narrative comments (Larsen's "advisor explanation" rows, Cisneros's CNL Properties note) overflow into the *next* trade's asset_name field. Heuristic fix: detect asset_name longer than 200 chars or containing `. ` mid-string, strip to the ticker-bearing tail. Same root cause across all three: PDF line breaks aren't reliable row boundaries; the line-walker needs schema-aware row reconstruction. None blocking; all v1.1.
 
 ## What This Project Is
 
@@ -148,36 +150,65 @@ What runs end-to-end **right now**:
 - **Customer funnel is bottom-up.** Free tier → indie devs → small fintechs → midsize firms → institutional. Don't court Citadel cold; build something indie devs love and let it climb. (Captured as a Hard Lesson above.)
 - **The product's working name in conversation is "the hub"** — short for "MCP data hub for US public disclosures." Not a final brand; just the term used internally so we don't have to keep saying "the MCP server / API / data product / repository."
 
+**Day 3 late evening — House port complete + cross-chamber MCP query proven (April 30):**
+
+- ✅ **House scraper ported to Node/TS** (`src/scrapers/house.ts`, ~470 lines). Two-stage pipeline: (1) fetch the House Clerk yearly XML index at `https://disclosures-clerk.house.gov/public_disc/financial-pdfs/<year>FD.xml` and parse with `fast-xml-parser` (`parseTagValue: false` to preserve DocIDs as strings), (2) for each PTR DocID, fetch the per-filing PDF, extract text via `pdf-parse` (lazy-loaded through dynamic import to avoid CommonJS/ESM tussle), and walk the lines using a transaction-signature anchor regex to identify trade rows.
+- ✅ **Three CLI commands added** in `src/scrape.ts`:
+  - `house-index [days]` — fetches XML index, prints PTR count + first/last 5 entries. Diagnostic.
+  - `house-text <ptr_id>` — dumps the full extracted PDF text for one PTR. Diagnostic — used heavily during parser debugging.
+  - `house [days] [--extract] [--save] [--max=N]` — the production command. `--extract` runs the per-trade parser, `--save` writes to Firestore, `--max=N` caps PTR count for testing.
+- ✅ **Owner-code regex iterated 4 times to find the right shape.** Started at `[A-Z][A-Z]` (broke on lowercase second char in iShares), expanded to `[A-Za-z][A-Za-z]` (broke on JTT. and JTO'), settled on `^(SP|JT|DC)\S` after seeing real PTRs with digits, periods, apostrophes, and lowercase chars all appearing right after the owner code. Captured as a Hard Lesson above.
+- ✅ **Programmatic control-char regex builder** in house.ts. `Edit` tool was injecting literal control bytes when the regex was written inline; rewrote as `String.fromCharCode(...)` programmatic construction. Workaround for tool-induced corruption — would have been silently broken otherwise.
+- ✅ **340 House trades written to Firestore** via `house 30 --extract --save`. Idempotent doc IDs (`house-<ptr_id>-<row_idx>`), zero parse errors, full schema match with Senate records (chamber field correctly set to "house").
+- ✅ **Cross-chamber MCP query proven end-to-end** through Claude Desktop:
+  - "What congressional trades happened in NVDA in the last 30 days?" → 6 hits across both chambers: Tim Moore (R-NC) sell $15K-$50K, Daniel Meuser spouse partial sells x2 (PA), Gilbert Cisneros (D-CA) buy + sell same week, John Boozman (R-AR) joint buy. **5 sells vs 1 buy across both chambers — directional signal in one round-trip.**
+- ✅ **Total `congressional_trades` collection**: 241 Senate + 340 House = **581 records spanning both chambers from one MCP tool.** v1 congressional data picture officially closed.
+- ✅ **Pushed to GitHub on `main`** late Day 3.
+
+**Day 3 late evening v1.1 polish queue (observed in House data, none blocking):**
+
+- **Cisneros AMZN rows** — `[Amazon.com](http://Amazon.com)` markdown-link garbage from PDF text extraction. Strip in v1.1.
+- **Larsen records 6, 8, 9** — comment-overflow contamination ("based company, purchased those assets in March...NextEra Energy"). Same root cause as phantom rows — PDF line breaks aren't row boundaries.
+- **Salazar row 25, McCormick row 16, Cisneros row 8** — phantom partial rows with `asset_type: "Stock"` instead of `"ST"`. Asset-name wrap onto second PDF line creates orphan synthetic row.
+- **OpenFIGI maps Alibaba CUSIP to BABAF (OTC pink-sheet) instead of BABA (NYSE ADR).** Add to wrong-issuer list alongside AMBAC→OSG. Issuer-name cross-validation fix from v1.1 deferral list will catch this category.
+- **FISV ticker for Fiserv** — Fiserv was renamed FI in 2024. Catalog gap in `company_tickers_exchange.json`. Will resolve once SEC updates their file or via OpenFIGI search-by-name fallback on next cusip_map flush.
+
 ## What's Open / Next Up
 
-In rough priority order. Day 3 evening, Senate is shipped and proven, House is next:
+In rough priority order. Day 3 late evening, Senate AND House are both shipped, proven, and serving cleanly through one MCP tool. v1 congressional picture closed. Form 144 is next per the locked v2 queue:
 
-1. **🔴 IMMEDIATE NEXT MOVE — Port the House scraper.** `reference/house_scraper.js` is the browser version. House Clerk index at https://disclosures-clerk.house.gov ships an XML feed of recent PTR filings; each PTR is a separately-formatted PDF that needs heuristic table extraction. Plan: `pdf-parse` (or `pdfjs-dist` as fallback) + cell-position heuristics for the trade table. Estimated 3-4 hours given Senate's reference is already proven. Closes the v1 congressional data picture.
+1. **🔴 IMMEDIATE NEXT MOVE — Form 144 scraper (planned insider sales).** Same EDGAR plumbing as Form 4 (we already have the session/parser scaffolding from `src/scrapers/form4.ts`), different filing type. Form 144 is filed when insiders REGISTER intent to sell large blocks (≥5,000 shares OR ≥$50K); the actual sale happens later as Form 4. Forward-looking signal almost nobody exposes cleanly. Estimated 1.5–2 hours given Form 4 is the template.
 
-2. **Form 144 — planned insider sales scraper.** Same EDGAR plumbing as Form 4, different filing type. Estimated 1.5-2 hours. Big differentiator — almost no aggregator exposes Form 144 cleanly, and it's a forward-looking signal (insiders REGISTER intent to sell large blocks before doing it).
+2. **13D/13G — activist 5%+ ownership scraper.** Same EDGAR plumbing. Estimated 1.5–2 hours. Reveals takeover targets, activist campaigns, hostile bids. Not cleanly aggregated outside Bloomberg.
 
-3. **13D/13G — activist 5%+ ownership scraper.** Same EDGAR plumbing. Estimated 1.5-2 hours. Reveals takeover targets, activist campaigns, hostile bids. Not cleanly aggregated outside Bloomberg.
+3. **Lobbying disclosures (LDA) scraper.** Senate Office of Public Records. New portal, new auth flow. Estimated 4–5 hours. Adjacent to congressional trades — same buyer profile asks for both ("what's Pfizer paying lobbyists for AND which senators are trading their stock").
 
-4. **Lobbying disclosures (LDA) scraper.** Senate Office of Public Records. New portal, new auth flow. Estimated 4-5 hours. Adjacent to congressional trades — same buyer profile asks for both ("what's Pfizer paying lobbyists for AND which senators are trading their stock").
+4. **8-K material events scraper.** Free-text item-code parsing makes this the hardest of the v2 batch. Estimated 3–4 hours. Highest-volume real-time disclosure stream — acquisitions, executive departures, earnings warnings.
 
-5. **8-K material events scraper.** Free-text item-code parsing makes this the hardest of the v2 batch. Estimated 3-4 hours. Highest-volume real-time disclosure stream — acquisitions, executive departures, earnings warnings.
+5. **`bioguide_id` catalog ingestion** for congressional member enrichment. Spec at `C:\CapitalEdge\CONGRESS_DATA_PIPELINE.md`. Source: https://github.com/unitedstates/congress-legislators YAML. Once loaded, every senate/house trade record gets enriched with `party`, `state`, `state_district`, photos, committee assignments at query time. Unblocks `get_member_profile` MCP tool.
 
-6. **`bioguide_id` catalog ingestion** for congressional member enrichment. Spec at `C:\CapitalEdge\CONGRESS_DATA_PIPELINE.md`. Source: https://github.com/unitedstates/congress-legislators YAML. Once loaded, every senate/house trade record gets enriched with `party`, `state`, `state_district`, photos, committee assignments at query time.
-
-7. **Polish pass on Senate parser output (v1.1, optional)**:
+6. **Polish pass on Senate parser output (v1.1, optional)**:
    - Whitespace cleanup in bond `asset_name` fields (current output has `\n\n\n` runs from how eFD renders bond descriptors).
    - Back-fill ticker from `asset_name` when source has it inline (e.g., "GOOGL - Alphabet Inc.", "MRSH - Marsh & McLennan...").
 
-8. **Implement remaining v1 tools:** `get_member_profile`, `get_company_filings_summary`. Full design in `TOOL_DESIGN.md`. Three of five v1 tools built. `get_member_profile` depends on the bioguide catalog; `get_company_filings_summary` is a thin aggregator over the other tools' data.
+7. **Polish pass on House parser output (v1.1, optional)** — captured Day 3 late evening:
+   - Strip markdown-link auto-formatting from asset names (`[Amazon.com](http://Amazon.com)` → `Amazon.com`).
+   - Detect + dedup phantom partial rows where `asset_type` is the literal word `"Stock"` instead of `"ST"` (Cisneros JLL, Salazar Whirlpool, McCormick UnitedHealth pattern).
+   - Detect + strip comment-overflow contamination where multi-line member-narrative bleeds into the next row's asset_name (Larsen "advisor explanation" pattern). Heuristic: asset_name > 200 chars or contains mid-sentence period.
+
+8. **Implement remaining v1 tools:** `get_member_profile`, `get_company_filings_summary`. Full design in `TOOL_DESIGN.md`. Three of five v1 tools built and proven. `get_member_profile` depends on the bioguide catalog (item 5); `get_company_filings_summary` is a thin aggregator over the other tools' data.
 
 9. **Known v1.1 deferrals:**
-   - **Wrong-issuer OpenFIGI mappings**: AMBAC → OSG, etc. Needs issuer-name cross-validation (compare OpenFIGI's returned `name` against 13F's `nameOfIssuer`, reject mismatches).
+   - **Wrong-issuer OpenFIGI mappings**: AMBAC → OSG, BABAF (Alibaba OTC) instead of BABA (Alibaba NYSE ADR), etc. Needs issuer-name cross-validation (compare OpenFIGI's returned `name` against 13F's `nameOfIssuer`, reject mismatches).
    - **Pre-2023 13F market values 1000× too small**: SEC's old "thousands" instruction. Era-boundary handling needed.
    - **Senate "paper PTR" amendments**: ~0% of observed disclosures. Skip+log in place; full handling needs separate PDF path.
+   - **FISV ticker stale** — Fiserv was renamed FI in 2024. Catalog gap in `company_tickers_exchange.json`. Will resolve via OpenFIGI search-by-name on next cusip_map flush.
 
 10. **Deploy v1.0 as a remote MCP server.** Cloud Run or Firebase Functions in the `capitaledge-api` project. Needs Blaze plan upgrade.
 
 11. **Commercial: brand, domain, customer validation, pricing, marketing site.** Not engineering. Don't build deployment infrastructure ahead of customer interest. Bottom-up funnel strategy applies (see Hard Lessons).
+
+12. **Open architectural question (Greg flagged Day 3 late evening, parking for now):** should the dashboard at `C:\CapitalEdge` consume from the hub's Firestore directly (Option B) or keep the locked dual-scrape posture (Option A)? Data shapes are deliberately compatible — `congressional_trades`, `insider_trades`, `institutional_holdings` here match the dashboard's planned schema. Re-opening this depends on Derek's actual scraper-pipeline state and partnership-friction tolerance. Greg said "I will revisit the question." Don't decide for him.
 
 ## Files In This Project
 
@@ -185,13 +216,14 @@ In rough priority order. Day 3 evening, Senate is shipped and proven, House is n
 - `src/tools/index.ts` — registry of registered tools (3 active: insider, institutional, congressional)
 - `src/tools/insider-transactions.ts` — first MCP tool (definition + handler + input validation)
 - `src/tools/institutional-holdings.ts` — second MCP tool, exposes 13F holdings (Day 2)
-- `src/tools/congressional-trades.ts` — third MCP tool, exposes Senate eFD PTRs (Day 3 afternoon). House data lands here too once that scraper ships.
+- `src/tools/congressional-trades.ts` — third MCP tool, exposes both Senate eFD PTRs and House Clerk PTRs (Day 3 afternoon + late evening). 581 records combined as of Day 3 wrap. Cross-chamber NVDA query proven through Claude Desktop.
 - `src/scrapers/form4.ts` — Node/TS port of the Form 4 scraper
 - `src/scrapers/13f.ts` — Node/TS port of the 13F scraper with sub-account aggregation, top-50 filter, position-change calc, closed-position synthesis (Day 2)
 - `src/scrapers/senate.ts` — Node/TS port of the Senate eFD PTR scraper (Day 3 afternoon). Full session protocol with CSRF rotation, Origin header for Django 4 compatibility, multipart FormData on the data POST, paper-PTR detector. ~470 lines.
+- `src/scrapers/house.ts` — Node/TS port of the House Clerk PTR scraper (Day 3 late evening). Two-stage pipeline: yearly XML index from `disclosures-clerk.house.gov` → per-PTR PDF text extraction via lazy-loaded `pdf-parse` → heuristic line-walker with TX_SIG_RE anchor regex for trade rows. Owner-code regex `^(SP|JT|DC)\S` handles all observed punctuation/case mixes (SPiShares, DCBJ, JTT., JTO', etc.). Programmatic control-char regex via `String.fromCharCode` (workaround for tool-induced byte injection). ~470 lines.
 - `src/openfigi.ts` — OpenFIGI CUSIP→ticker enrichment with US-exchange preference, Firestore write-through cache, EDGAR-catalog cross-validation in `pickBestMatch`, single-char allowlist, USD-suffix rejection, and `searchOpenFigiByName` for the tertiary search-by-name fallback (Day 3)
 - `src/sec-tickers.ts` — EDGAR `company_tickers_exchange.json` (Day 3 — switched from `company_tickers.json`) name fallback for CINS-coded foreign-domiciled CUSIPs and ticker-validation oracle. Exports `lookupTickerByName`, `isKnownUSTicker`, `searchEdgar`, `dumpEdgar`, `normalizeName`. Contains aggressive abbreviation-expansion table and jurisdiction-suffix stripping.
-- `src/scrape.ts` — CLI runner for scrapers (`ping`, `form4`, `form4-feed`, `13f`, `13f-feed`, `funds`, `senate`, `senate-ptr`, plus Day 3 diagnostics: `test-normalize`, `search-edgar`, `dump-edgar`, `flush-cusip-cache`)
+- `src/scrape.ts` — CLI runner for scrapers (`ping`, `form4`, `form4-feed`, `13f`, `13f-feed`, `funds`, `senate`, `senate-ptr`, `house`, `house-index`, `house-text`, plus Day 3 diagnostics: `test-normalize`, `search-edgar`, `dump-edgar`, `flush-cusip-cache`)
 - `src/firestore.ts` — data layer with auto-detected stub vs live mode; `saveInsiderTransactions`, `saveInstitutionalHoldings`, `saveCongressionalTrades`, `queryInsiderTransactions`, `queryInstitutionalHoldings`, `queryCongressionalTrades`, `pingFirestore`, `getLiveDb`, `getDbIfLive`
 - `src/types.ts` — shared types (`ResultEnvelope`, `InsiderTransaction`, `InstitutionalHolding`, `CongressionalTrade`, etc.)
 - `package.json` — dependencies and scripts
@@ -203,7 +235,7 @@ In rough priority order. Day 3 evening, Senate is shipped and proven, House is n
 - `secrets/.gitkeep` — keeps the folder in version control without contents
 - `reference/form4_scraper.js` — original browser-version scraper from Capital Edge (kept for diffing)
 - `reference/congressional_scraper.js` — original Senate scraper (browser-version). **Ported Day 3 afternoon** to `src/scrapers/senate.ts` with three load-bearing fixes the reference had drifted on (see Hard Lessons). Kept for diffing.
-- `reference/house_scraper.js` — original House scraper (browser-version, awaiting Node port)
+- `reference/house_scraper.js` — original House scraper (browser-version). **Ported Day 3 late evening** to `src/scrapers/house.ts` with iterative owner-code regex hardening (4 rounds) and programmatic control-char regex builder (workaround for byte-corruption during inline regex authoring). Kept for diffing.
 - `reference/institutional_scraper.js` — original 13F scraper (browser-version, awaiting Node port)
 - `MCP_PROJECT_HANDOFF.md` — original handoff from the chat-interface session that scoped this product
 - `DATA_REQUIREMENTS_FOR_DASHBOARD.md` — data-quality spec sent to the Capital Edge dashboard project as peer review (not a hard dependency since we're dual-scrape)
@@ -267,15 +299,21 @@ cd C:\CapitalEdge-API
 npx tsx src/scrape.ts ping                    # confirms credentials
 npx tsx src/scrape.ts form4 AAPL              # hits SEC, prints AAPL trades
 npx tsx src/scrape.ts form4-feed 1 --save     # 1-day live feed, saves to Firestore
+npx tsx src/scrape.ts senate 7 --save         # 7-day Senate PTRs, saves
+npx tsx src/scrape.ts house 7 --extract --save  # 7-day House PTRs, saves
 npm run dev                                    # boots MCP server in LIVE MODE
 ```
 
 ## Last Updated
 
-April 30, 2026 — Day 3 late evening. **Senate end-to-end proven through the MCP tool.** 241 Senate trades in Firestore, three MCP queries returning real signal-rich data (NVDA buys/sells across senators, McCormick's $500K+ PA muni-bond ladder, Mullin's $50–100K UnitedHealth purchase). Three of five v1 tools officially passing the agent-native bar.
+April 30, 2026 — Day 3 wrap. **Both chambers shipped end-to-end and proven through one MCP tool.** 241 Senate + 340 House = 581 `congressional_trades` records in Firestore. Cross-chamber NVDA query through Claude Desktop returned 6 hits across both chambers in one round-trip — Tim Moore (R-NC) sell, Daniel Meuser spouse partial sells x2 (PA), Gilbert Cisneros (D-CA) buy + sell same week, John Boozman (R-AR) joint buy. **5 sells vs 1 buy across chambers — directional signal in one query.** v1 congressional picture officially closed.
 
-Firebase deploy plumbing is now permanent. Created `firebase.json` + `.firebaserc` so future index changes are one command (`firebase deploy --only firestore:indexes`) instead of clicking auto-generated URLs in the console. All five active composite indexes (insider, institutional, three congressional) deployed and live.
+Three of five v1 tools officially passing the agent-native bar (`get_insider_transactions`, `get_institutional_holdings`, `get_congressional_trades`). Server v0.3.0 stable.
 
-**Strategic clarity locked tonight that should outlast this session:** stay vertical (no medical/legal/sports — depth in US public disclosures only); v2 queue is **House → Form 144 → 13D/G → Lobbying → 8-K** in that order; customer funnel is bottom-up (free tier → indie devs → small fintechs → midsize firms → institutional, not the reverse). Both decisions captured as Hard Lessons with full reasoning.
+Firebase deploy plumbing is permanent (`firebase.json` + `.firebaserc` checked in). Five active composite indexes (insider, institutional, three congressional) deployed and live.
 
-**Immediate next move is item 1: port the House scraper.** Reference at `reference/house_scraper.js`. PDF parsing (each PTR is a separately-formatted PDF off the House Clerk XML index). Plan: `pdf-parse` library + heuristic table extraction. Estimated 3-4 hours given the Senate template is now proven. Closes the v1 congressional data picture (Senate ✓, House next), gives `get_congressional_trades` full coverage of both chambers.
+**Strategic clarity locked Day 3 that should outlast this session:** stay vertical (no medical/legal/sports — depth in US public disclosures only); v2 queue is **House ✓ → Form 144 → 13D/G → Lobbying → 8-K** in that order with House now done; customer funnel is bottom-up (free tier → indie devs → small fintechs → midsize firms → institutional, not the reverse). All decisions captured as Hard Lessons with full reasoning.
+
+**Immediate next move is item 1: Form 144 scraper (planned insider sales).** Same EDGAR plumbing as Form 4 (we already have the scaffolding from `src/scrapers/form4.ts`). Estimated 1.5–2 hours. Big differentiator since almost no aggregator exposes Form 144 cleanly — it's forward-looking signal where insiders REGISTER intent to sell large blocks before doing it.
+
+**Open architectural question (parking, not deciding):** Greg flagged the dashboard-vs-hub data sourcing question late Day 3 — should `C:\CapitalEdge` consume from the hub's Firestore directly (Option B) or keep the locked dual-scrape posture (Option A)? Field shapes are deliberately compatible. Deferred until Greg revisits. See item 12 in "What's Open / Next Up" for the full framing.
