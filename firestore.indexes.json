@@ -41,6 +41,30 @@
         { "fieldPath": "disclosure_date", "order": "DESCENDING" },
         { "fieldPath": "amount_min", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "planned_insider_sales",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ticker", "order": "ASCENDING" },
+        { "fieldPath": "filing_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "planned_insider_sales",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ticker", "order": "ASCENDING" },
+        { "fieldPath": "aggregate_market_value", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "planned_insider_sales",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ticker", "order": "ASCENDING" },
+        { "fieldPath": "approximate_sale_date", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

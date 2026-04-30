@@ -7,6 +7,9 @@
  *   tsx src/scrape.ts form4 AAPL --save          ...and write them to Firestore
  *   tsx src/scrape.ts form4-feed [days]          Form 4 across all companies, last N days
  *   tsx src/scrape.ts form4-feed 2 --save        ...and write them to Firestore
+ *   tsx src/scrape.ts form144 AAPL [--save]      Form 144 planned-sale notices for one ticker
+ *   tsx src/scrape.ts form144-feed [days]        Form 144 across all companies, last N days
+ *   tsx src/scrape.ts form144-feed 7 --save      ...and write them to Firestore
  *   tsx src/scrape.ts 13f berkshire              Latest 13F-HR for one fund (alias or CIK)
  *   tsx src/scrape.ts 13f 0001067983 --save      ...and write to Firestore
  *   tsx src/scrape.ts 13f-feed [days]            Recent 13F filings across all funds
@@ -35,10 +38,15 @@ import {
   getDbIfLive,
   pingFirestore,
   saveCongressionalTrades,
+  saveForm144Filings,
   saveInsiderTransactions,
   saveInstitutionalHoldings,
 } from "./firestore.js";
 import { scrapeForm4ByTicker, scrapeForm4LiveFeed } from "./scrapers/form4.js";
+import {
+  scrapeForm144ByTicker,
+  scrapeForm144LiveFeed,
+} from "./scrapers/form144.js";
 import {
   listTrackedFunds,
   scrape13FByFund,
@@ -122,6 +130,49 @@ const COMMANDS: Record<string, CliCommand> = {
         );
       }
       return trades;
+    },
+  },
+  form144: {
+    description:
+      "Scrape Form 144 planned-sale notices for a single ticker (add --save to write to Firestore). Form 144 is filed BEFORE the actual sale — forward-looking signal.",
+    run: async (args) => {
+      const ticker = args.find((a) => !a.startsWith("--"));
+      if (!ticker) {
+        throw new Error("Usage: tsx src/scrape.ts form144 <TICKER> [--save]");
+      }
+      const filings = await scrapeForm144ByTicker(ticker);
+      if (hasSaveFlag(args)) {
+        console.error(
+          `[save] Writing ${filings.length} planned-sale lines to Firestore...`,
+        );
+        const result = await saveForm144Filings(filings);
+        console.error(
+          `[save] Saved ${result.saved} lines to ${result.collection}`,
+        );
+      }
+      return filings;
+    },
+  },
+  "form144-feed": {
+    description:
+      "Scrape Form 144 planned-sale notices across all companies for the last N days (default 7; add --save to write to Firestore)",
+    run: async (args) => {
+      const positional = args.find((a) => !a.startsWith("--"));
+      const days = positional ? parseInt(positional, 10) : 7;
+      if (Number.isNaN(days) || days < 1) {
+        throw new Error("Days must be a positive integer");
+      }
+      const filings = await scrapeForm144LiveFeed(days);
+      if (hasSaveFlag(args)) {
+        console.error(
+          `[save] Writing ${filings.length} planned-sale lines to Firestore...`,
+        );
+        const result = await saveForm144Filings(filings);
+        console.error(
+          `[save] Saved ${result.saved} lines to ${result.collection}`,
+        );
+      }
+      return filings;
     },
   },
   "13f": {

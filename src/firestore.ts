@@ -20,6 +20,8 @@ import { fileURLToPath } from "node:url";
 import type {
   CongressionalTrade,
   CongressionalTradesQuery,
+  Form144Filing,
+  Form144FilingsQuery,
   InsiderTransaction,
   InsiderTransactionsQuery,
   InstitutionalHolding,
@@ -384,6 +386,96 @@ export async function saveCongressionalTrades(
     const chunk = trades.slice(i, i + BATCH_SIZE);
     for (const trade of chunk) {
       batch.set(collection.doc(trade.id), trade, { merge: true });
+    }
+    await batch.commit();
+    saved += chunk.length;
+  }
+
+  return { saved, collection: COLLECTION };
+}
+
+// ─── Planned insider sales (Form 144) query ────────────────────────────────
+
+export async function queryForm144Filings(
+  query: Form144FilingsQuery,
+): Promise<QueryResult<Form144Filing>> {
+  if (isStubMode()) {
+    // No stub data for Form 144 yet — returns empty in stub mode.
+    return { results: [], has_more: false };
+  }
+
+  const db = await getLiveDb();
+  let q: FirestoreQuery = db.collection("planned_insider_sales");
+
+  if (query.ticker) q = q.where("ticker", "==", query.ticker);
+  if (query.company_cik) {
+    q = q.where("company_cik", "==", query.company_cik);
+  }
+  if (query.min_value !== undefined) {
+    q = q.where("aggregate_market_value", ">=", query.min_value);
+  }
+
+  const sortField = query.sort_by ?? "filing_date";
+  const sortOrder = query.sort_order ?? "desc";
+
+  if (query.since) q = q.where(sortField, ">=", query.since);
+  if (query.until) q = q.where(sortField, "<=", query.until);
+
+  q = q.orderBy(sortField, sortOrder);
+
+  const userLimit = query.limit ?? 50;
+
+  // Same substring-filter consideration as the other collections: when
+  // filer_name is set, pull a much larger Firestore window so the client-side
+  // filter sees the full universe.
+  const fetchLimit = query.filer_name ? 5000 : userLimit + 1;
+  q = q.limit(fetchLimit);
+
+  const snap = await q.get();
+  let docs = snap.docs.map((d) => d.data() as Form144Filing);
+
+  if (query.filer_name) {
+    const needle = query.filer_name.toLowerCase();
+    docs = docs.filter((f) =>
+      (f.filer_name ?? "").toLowerCase().includes(needle),
+    );
+  }
+
+  const has_more = docs.length > userLimit;
+  const results = docs.slice(0, userLimit);
+  return { results, has_more };
+}
+
+/**
+ * Save scraped Form 144 filings to Firestore. Idempotent — re-running the
+ * scraper for the same accession writes the same doc IDs (`{accession}-
+ * {ticker}-{lineNumber}`) with merge:true semantics, no duplicates.
+ *
+ * Throws if called in stub mode (no service account).
+ */
+export async function saveForm144Filings(
+  filings: Form144Filing[],
+): Promise<{ saved: number; collection: string }> {
+  if (isStubMode()) {
+    throw new Error(
+      "Cannot save to Firestore in stub mode (no service account at secrets/service-account.json)",
+    );
+  }
+  const COLLECTION = "planned_insider_sales";
+  if (filings.length === 0) {
+    return { saved: 0, collection: COLLECTION };
+  }
+
+  const db = await getLiveDb();
+  const collection = db.collection(COLLECTION);
+  const BATCH_SIZE = 400;
+  let saved = 0;
+
+  for (let i = 0; i < filings.length; i += BATCH_SIZE) {
+    const batch = db.batch();
+    const chunk = filings.slice(i, i + BATCH_SIZE);
+    for (const filing of chunk) {
+      batch.set(collection.doc(filing.id), filing, { merge: true });
     }
     await batch.commit();
     saved += chunk.length;

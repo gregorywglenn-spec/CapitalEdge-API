@@ -78,6 +78,74 @@ export interface InsiderTransactionsQuery {
   limit?: number;
 }
 
+// ─── Planned insider sales (Form 144) ──────────────────────────────────────
+
+/**
+ * One Form 144 filing — a notice of proposed sale filed under Rule 144 of the
+ * Securities Act. Insiders (officers, directors, 10%+ holders) must file
+ * Form 144 BEFORE selling restricted or control stock blocks of ≥5,000 shares
+ * OR ≥$50,000 aggregate value. The actual sale later lands as a Form 4.
+ *
+ * Form 144 is *forward-looking* — it tells you what's about to happen, not
+ * what already did. The aggregate_market_value is the insider's estimate at
+ * filing time; the actual sale price/value can differ. The approximate_sale_date
+ * is also an estimate — the real Form 4 transaction_date may be days later.
+ *
+ * Field set deliberately mirrors what raw EDGAR exposes — no derived signals,
+ * no convergence scores. Pure-publisher posture per TOOL_DESIGN.md.
+ *
+ * Almost no aggregator exposes Form 144 cleanly — Bloomberg buries it, Capitol
+ * Trades doesn't carry it, Quiver doesn't either. This is a real differentiator
+ * for the hub.
+ */
+export interface Form144Filing {
+  id: string;
+  ticker: string;
+  company_name: string | null;
+  company_cik: string;
+  filer_name: string;
+  filer_relationship: string;
+  security_title: string | null;
+  shares_to_be_sold: number;
+  aggregate_market_value: number;
+  approximate_sale_date: string;
+  shares_outstanding: number | null;
+  pct_of_outstanding: number | null;
+  broker_name: string | null;
+  exchange: string | null;
+  acquisition_date: string | null;
+  nature_of_acquisition: string | null;
+  /**
+   * Date a 10b5-1 trading plan was adopted, if this sale falls under one.
+   * Non-null means the sale is pre-arranged (not discretionary). Significant
+   * agent signal — distinguishes "this was scheduled months ago" from "this
+   * is a tactical decision to sell now."
+   */
+  plan_adoption_date: string | null;
+  is_10b5_1_plan: boolean;
+  notice_date: string | null;
+  filing_date: string;
+  accession_number: string;
+  sec_filing_url: string;
+  data_source: "SEC_EDGAR_FORM144";
+}
+
+/**
+ * Validated query parameters for get_planned_insider_sales.
+ * Matches the inputSchema declared in tools/planned-insider-sales.ts.
+ */
+export interface Form144FilingsQuery {
+  ticker?: string;
+  company_cik?: string;
+  filer_name?: string;
+  min_value?: number;
+  since?: string;
+  until?: string;
+  sort_by?: "filing_date" | "approximate_sale_date" | "aggregate_market_value";
+  sort_order?: "desc" | "asc";
+  limit?: number;
+}
+
 // ─── Institutional holdings (13F) ───────────────────────────────────────────
 
 /**
