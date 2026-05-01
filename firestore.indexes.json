@@ -105,6 +105,38 @@
         { "fieldPath": "is_derivative", "order": "ASCENDING" },
         { "fieldPath": "filing_date", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "activist_ownership",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ticker", "order": "ASCENDING" },
+        { "fieldPath": "filing_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "activist_ownership",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "company_cik", "order": "ASCENDING" },
+        { "fieldPath": "filing_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "activist_ownership",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "is_activist", "order": "ASCENDING" },
+        { "fieldPath": "filing_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "activist_ownership",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "filer_cik", "order": "ASCENDING" },
+        { "fieldPath": "filing_date", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

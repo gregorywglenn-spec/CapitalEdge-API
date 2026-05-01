@@ -18,6 +18,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
+  ActivistOwnership,
+  ActivistOwnershipQuery,
   CongressionalTrade,
   CongressionalTradesQuery,
   Form144Filing,
@@ -570,6 +572,101 @@ export async function saveForm3Holdings(
     const chunk = holdings.slice(i, i + BATCH_SIZE);
     for (const holding of chunk) {
       batch.set(collection.doc(holding.id), holding, { merge: true });
+    }
+    await batch.commit();
+    saved += chunk.length;
+  }
+
+  return { saved, collection: COLLECTION };
+}
+
+// ─── Activist / 5%+ ownership (Schedule 13D/G) query ──────────────────────
+
+export async function queryActivistOwnership(
+  query: ActivistOwnershipQuery,
+): Promise<QueryResult<ActivistOwnership>> {
+  if (isStubMode()) {
+    return { results: [], has_more: false };
+  }
+
+  const db = await getLiveDb();
+  let q: FirestoreQuery = db.collection("activist_ownership");
+
+  if (query.ticker) q = q.where("ticker", "==", query.ticker);
+  if (query.company_cik) {
+    q = q.where("company_cik", "==", query.company_cik);
+  }
+  if (query.cusip) q = q.where("cusip", "==", query.cusip);
+  if (query.filer_cik) q = q.where("filer_cik", "==", query.filer_cik);
+  if (query.is_activist !== undefined) {
+    q = q.where("is_activist", "==", query.is_activist);
+  }
+  if (query.filing_type) {
+    q = q.where("filing_type", "==", query.filing_type);
+  }
+  if (query.min_percent_of_class !== undefined) {
+    q = q.where("percent_of_class", ">=", query.min_percent_of_class);
+  }
+
+  const sortField = query.sort_by ?? "filing_date";
+  const sortOrder = query.sort_order ?? "desc";
+
+  if (query.since) q = q.where(sortField, ">=", query.since);
+  if (query.until) q = q.where(sortField, "<=", query.until);
+
+  q = q.orderBy(sortField, sortOrder);
+
+  const userLimit = query.limit ?? 50;
+
+  // Same substring-filter consideration as the other collections: when
+  // filer_name is set, pull a much larger Firestore window so the client-side
+  // filter sees the full universe.
+  const fetchLimit = query.filer_name ? 5000 : userLimit + 1;
+  q = q.limit(fetchLimit);
+
+  const snap = await q.get();
+  let docs = snap.docs.map((d) => d.data() as ActivistOwnership);
+
+  if (query.filer_name) {
+    const needle = query.filer_name.toLowerCase();
+    docs = docs.filter((f) =>
+      (f.filer_name ?? "").toLowerCase().includes(needle),
+    );
+  }
+
+  const has_more = docs.length > userLimit;
+  const results = docs.slice(0, userLimit);
+  return { results, has_more };
+}
+
+/**
+ * Save scraped activist / passive 5%+ ownership rows to Firestore.
+ * Idempotent — re-running emits the same doc IDs (`{accession}-{ticker}-{lineNo}`)
+ * with merge:true semantics.
+ */
+export async function saveActivistOwnership(
+  rows: ActivistOwnership[],
+): Promise<{ saved: number; collection: string }> {
+  if (isStubMode()) {
+    throw new Error(
+      "Cannot save to Firestore in stub mode (no service account at secrets/service-account.json)",
+    );
+  }
+  const COLLECTION = "activist_ownership";
+  if (rows.length === 0) {
+    return { saved: 0, collection: COLLECTION };
+  }
+
+  const db = await getLiveDb();
+  const collection = db.collection(COLLECTION);
+  const BATCH_SIZE = 400;
+  let saved = 0;
+
+  for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+    const batch = db.batch();
+    const chunk = rows.slice(i, i + BATCH_SIZE);
+    for (const row of chunk) {
+      batch.set(collection.doc(row.id), row, { merge: true });
     }
     await batch.commit();
     saved += chunk.length;

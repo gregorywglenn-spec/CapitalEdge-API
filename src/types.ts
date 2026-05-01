@@ -167,6 +167,96 @@ export interface Form144FilingsQuery {
   limit?: number;
 }
 
+// ─── Activist / 5%+ ownership disclosures (Schedule 13D / 13G) ─────────────
+
+/**
+ * One row from a Schedule 13D or 13G filing — beneficial-ownership disclosure
+ * by anyone holding ≥5% of a registered class of equity securities. Reveals
+ * activist campaigns, takeover targets, hostile bids, large institutional
+ * accumulations.
+ *
+ * Two flavors with the same conceptual data but **structurally different
+ * XML schemas** (captured as a Hard Lesson):
+ *
+ *   - **13D**: filer signals intent to influence control. Activist filing.
+ *     namespace=schedule13D, fields under `reportingPersons.reportingPersonInfo.*`,
+ *     `aggregateAmountOwned`, `percentOfClass`, `dateOfEvent`.
+ *
+ *   - **13G**: filer is passive (institutional, no intent to influence).
+ *     namespace=schedule13g, fields under `coverPageHeaderReportingPersonDetails.*`,
+ *     `reportingPersonBeneficiallyOwnedAggregateNumberOfShares`,
+ *     `classPercent`, `eventDateRequiresFilingThisStatement`.
+ *
+ * Both populate this single output type; the parser branches on submissionType.
+ *
+ * `is_activist` is the structural signal — true for any SCHEDULE 13D variant,
+ * false for any 13G. The full "Item 4: Purpose of Transaction" narrative is
+ * NOT in the structured XML — it's on the HTML side. v1.1 polish to extract.
+ *
+ * One filing can have multiple reporting persons (joint filers). Each emits
+ * its own ActivistOwnership row.
+ */
+export interface ActivistOwnership {
+  id: string;
+  ticker: string;
+  company_name: string | null;
+  company_cik: string;
+  cusip: string;
+  filer_name: string;
+  /**
+   * Filer CIK (zero-padded). Empty string when filer doesn't have a CIK
+   * (rare — `<reportingPersonNoCIK>` flag in 13D schema; some individuals).
+   */
+  filer_cik: string;
+  /**
+   * Type-of-reporting-person code from the form: "IN" individual, "CO"
+   * corporation, "OO" other, "PN" partnership, "BD" broker-dealer,
+   * "IA" investment adviser, "EP" employee benefit plan, etc.
+   */
+  filer_type: string;
+  /**
+   * Free-text country/state of citizenship (for individuals) or place of
+   * organization (for entities). Examples: "USA", "Delaware", "Cayman Islands".
+   */
+  citizenship_or_organization: string;
+  filing_type: "SCHEDULE 13D" | "SCHEDULE 13D/A" | "SCHEDULE 13G" | "SCHEDULE 13G/A";
+  /** True for any 13D variant, false for any 13G. Structural activist signal. */
+  is_activist: boolean;
+  /** Aggregate beneficial ownership (shares). */
+  shares_owned: number;
+  /** Percent of class beneficially owned. From form's percentOfClass / classPercent field. */
+  percent_of_class: number;
+  sole_voting_power: number;
+  shared_voting_power: number;
+  sole_dispositive_power: number;
+  shared_dispositive_power: number;
+  /** ISO date of the event triggering the filing (acquisition crossing 5%, material change, etc.). */
+  event_date: string;
+  filing_date: string;
+  accession_number: string;
+  sec_filing_url: string;
+  data_source: "SEC_EDGAR_13D" | "SEC_EDGAR_13G";
+}
+
+/**
+ * Validated query parameters for the (eventual) get_activist_stakes MCP tool.
+ */
+export interface ActivistOwnershipQuery {
+  ticker?: string;
+  company_cik?: string;
+  cusip?: string;
+  filer_name?: string;
+  filer_cik?: string;
+  is_activist?: boolean;
+  filing_type?: "SCHEDULE 13D" | "SCHEDULE 13D/A" | "SCHEDULE 13G" | "SCHEDULE 13G/A";
+  min_percent_of_class?: number;
+  since?: string;
+  until?: string;
+  sort_by?: "filing_date" | "event_date" | "percent_of_class" | "shares_owned";
+  sort_order?: "desc" | "asc";
+  limit?: number;
+}
+
 // ─── Initial ownership baselines (Form 3) ──────────────────────────────────
 
 /**

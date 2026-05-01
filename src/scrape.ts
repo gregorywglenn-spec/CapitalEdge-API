@@ -3,6 +3,10 @@
  *
  * Usage:
  *   tsx src/scrape.ts ping                       Verify Firestore connection
+ *   tsx src/scrape.ts 13d-13g <TICKER>           Schedule 13D/13G stakes filed against one issuer
+ *   tsx src/scrape.ts 13d-13g <TICKER> --save    ...and write them to Firestore
+ *   tsx src/scrape.ts 13d-13g-feed [days]        Schedule 13D/13G across all issuers, last N days
+ *   tsx src/scrape.ts 13d-13g-feed 7 --save      ...and write them to Firestore
  *   tsx src/scrape.ts form3 AAPL                 Form 3 initial-ownership baselines for one ticker
  *   tsx src/scrape.ts form3 AAPL --save          ...and write them to Firestore
  *   tsx src/scrape.ts form3-feed [days]          Form 3 across all companies, last N days
@@ -41,6 +45,7 @@
 import {
   getDbIfLive,
   pingFirestore,
+  saveActivistOwnership,
   saveCongressionalTrades,
   saveForm144Filings,
   saveForm3Holdings,
@@ -56,6 +61,10 @@ import {
   scrapeForm3ByTicker,
   scrapeForm3LiveFeed,
 } from "./scrapers/form3.js";
+import {
+  scrapeActivistByTicker,
+  scrapeActivistLiveFeed,
+} from "./scrapers/activist.js";
 import {
   listTrackedFunds,
   scrape13FByFund,
@@ -100,6 +109,51 @@ const COMMANDS: Record<string, CliCommand> = {
         );
       }
       return result;
+    },
+  },
+  "13d-13g": {
+    description:
+      "Scrape Schedule 13D / 13G beneficial-ownership disclosures for a single issuer (add --save to write to Firestore). 13D = activist (intent to influence control); 13G = passive institutional. Both filed when a holder crosses 5%.",
+    run: async (args) => {
+      const ticker = args.find((a) => !a.startsWith("--"));
+      if (!ticker) {
+        throw new Error(
+          "Usage: tsx src/scrape.ts 13d-13g <TICKER> [--save]",
+        );
+      }
+      const rows = await scrapeActivistByTicker(ticker);
+      if (hasSaveFlag(args)) {
+        console.error(
+          `[save] Writing ${rows.length} activist/passive ownership rows to Firestore...`,
+        );
+        const result = await saveActivistOwnership(rows);
+        console.error(
+          `[save] Saved ${result.saved} rows to ${result.collection}`,
+        );
+      }
+      return rows;
+    },
+  },
+  "13d-13g-feed": {
+    description:
+      "Scrape Schedule 13D/13G filings across all issuers for the last N days (default 7; add --save to write to Firestore). Captures activist campaigns, hostile bids, large institutional accumulations.",
+    run: async (args) => {
+      const positional = args.find((a) => !a.startsWith("--"));
+      const days = positional ? parseInt(positional, 10) : 7;
+      if (Number.isNaN(days) || days < 1) {
+        throw new Error("Days must be a positive integer");
+      }
+      const rows = await scrapeActivistLiveFeed(days);
+      if (hasSaveFlag(args)) {
+        console.error(
+          `[save] Writing ${rows.length} activist/passive ownership rows to Firestore...`,
+        );
+        const result = await saveActivistOwnership(rows);
+        console.error(
+          `[save] Saved ${result.saved} rows to ${result.collection}`,
+        );
+      }
+      return rows;
     },
   },
   form3: {
