@@ -76,6 +76,27 @@ export interface InsiderTransactionsQuery {
   sort_by?: "disclosure_date" | "transaction_date" | "total_value";
   sort_order?: "desc" | "asc";
   limit?: number;
+  /**
+   * When true, the response includes matching Form 3 baseline records under
+   * a `baselines` field. Lets agents stitch initial-ownership context onto
+   * Form 4 deltas without a second tool call. Requires ticker or company_cik
+   * to be set (otherwise the baseline lookup would be unbounded).
+   */
+  include_baseline?: boolean;
+}
+
+/**
+ * Extended response envelope for get_insider_transactions when
+ * include_baseline=true. Standard ResultEnvelope shape plus an optional
+ * baselines array of Form 3 rows matching the active ticker/officer filters.
+ *
+ * Form 3 baselines snapshot the insider's *starting* position (filed when
+ * they first became an insider). Agents pair them with Form 4 deltas to
+ * reconstruct full ownership history without a second tool call.
+ */
+export interface InsiderTransactionsEnvelope
+  extends ResultEnvelope<InsiderTransaction> {
+  baselines?: Form3Holding[];
 }
 
 // ─── Planned insider sales (Form 144) ──────────────────────────────────────
@@ -142,6 +163,96 @@ export interface Form144FilingsQuery {
   since?: string;
   until?: string;
   sort_by?: "filing_date" | "approximate_sale_date" | "aggregate_market_value";
+  sort_order?: "desc" | "asc";
+  limit?: number;
+}
+
+// ─── Initial ownership baselines (Form 3) ──────────────────────────────────
+
+/**
+ * One row from a Form 3 filing — the *initial* statement of beneficial
+ * ownership filed when someone first becomes an insider (officer, director,
+ * 10%+ holder, or other qualifying person). One filing produces one record
+ * per security class held: typically common stock plus any derivatives
+ * (options, RSUs, warrants).
+ *
+ * Form 3 is the *baseline* that gives Form 4 deltas meaning. Without it,
+ * "Tim Cook sold 50,000 shares" floats with no anchor — you don't know if
+ * that's 1% or 50% of his position. With Form 3, the agent can stitch
+ * together: "filed Form 3 in 2011 with 1.0M shares, then years of Form 4
+ * grants/sales net to current holdings of 3.3M."
+ *
+ * Unlike Form 4 (transactions only), Form 3 records have no transaction
+ * shares/price/date — only `shares_owned` (the snapshot).
+ *
+ * Field set deliberately mirrors what raw EDGAR exposes — pure-publisher
+ * posture per TOOL_DESIGN.md. No derived intelligence.
+ */
+export interface Form3Holding {
+  id: string;
+  ticker: string;
+  company_name: string | null;
+  company_cik: string;
+  /** Insider's full name (multiple owners joined with " / " — same as Form 4). */
+  filer_name: string;
+  /** Insider's CIK. Persistent across Form 3 / Form 4 filings — useful join key. */
+  filer_cik: string;
+  /** Officer title at issuer (empty when filer is purely a director or 10%+ holder). */
+  officer_title: string;
+  is_director: boolean;
+  is_officer: boolean;
+  is_ten_percent_owner: boolean;
+  /** True when reportingOwnerRelationship.isOther is set; describes the relationship in `other_text`. */
+  is_other: boolean;
+  other_text: string;
+  filing_date: string;
+  /** "Common Stock", "Restricted Stock Unit", "Stock Option", etc. */
+  security_title: string;
+  /**
+   * True for derivative securities (options, warrants, convertibles).
+   * False for non-derivative (common stock, RSUs in some forms, preferred).
+   */
+  is_derivative: boolean;
+  /**
+   * Total shares owned of this security at the time of filing — the BASELINE.
+   * For derivative rows this is the count of underlying contracts/units, not
+   * the underlying share equivalent (which is in `underlying_security_shares`).
+   */
+  shares_owned: number;
+  /** "D" (direct, in own name) or "I" (indirect, e.g., via trust/spouse). */
+  direct_or_indirect: "D" | "I" | null;
+  /** Free-text describing the indirect ownership ("By Trust", "By Spouse", etc.). Empty for direct. */
+  nature_of_indirect_ownership: string;
+  /** Strike price for an option, conversion price for a convertible. Null for non-derivative. */
+  conversion_or_exercise_price: number | null;
+  /** ISO date the derivative becomes exercisable. Null for non-derivative or immediate. */
+  exercise_date: string | null;
+  /** ISO date the derivative expires. Null for non-derivative. */
+  expiration_date: string | null;
+  /** For derivatives: title of the security the derivative converts into (usually "Common Stock"). */
+  underlying_security_title: string | null;
+  /** For derivatives: number of underlying shares the derivative represents. */
+  underlying_security_shares: number | null;
+  accession_number: string;
+  sec_filing_url: string;
+  data_source: "SEC_EDGAR_FORM3";
+}
+
+/**
+ * Validated query parameters for the (eventual) Form 3 baseline query path.
+ * No dedicated MCP tool yet — Form 3 data may be exposed by extending
+ * get_insider_transactions with an `include_baseline` flag, or rolled into
+ * get_company_filings_summary when that aggregator tool ships.
+ */
+export interface Form3HoldingsQuery {
+  ticker?: string;
+  company_cik?: string;
+  filer_name?: string;
+  filer_cik?: string;
+  is_derivative?: boolean;
+  since?: string;
+  until?: string;
+  sort_by?: "filing_date" | "shares_owned";
   sort_order?: "desc" | "asc";
   limit?: number;
 }

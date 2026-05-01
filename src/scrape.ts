@@ -3,6 +3,10 @@
  *
  * Usage:
  *   tsx src/scrape.ts ping                       Verify Firestore connection
+ *   tsx src/scrape.ts form3 AAPL                 Form 3 initial-ownership baselines for one ticker
+ *   tsx src/scrape.ts form3 AAPL --save          ...and write them to Firestore
+ *   tsx src/scrape.ts form3-feed [days]          Form 3 across all companies, last N days
+ *   tsx src/scrape.ts form3-feed 7 --save        ...and write them to Firestore
  *   tsx src/scrape.ts form4 AAPL                 Form 4 trades for one ticker
  *   tsx src/scrape.ts form4 AAPL --save          ...and write them to Firestore
  *   tsx src/scrape.ts form4-feed [days]          Form 4 across all companies, last N days
@@ -39,6 +43,7 @@ import {
   pingFirestore,
   saveCongressionalTrades,
   saveForm144Filings,
+  saveForm3Holdings,
   saveInsiderTransactions,
   saveInstitutionalHoldings,
 } from "./firestore.js";
@@ -47,6 +52,10 @@ import {
   scrapeForm144ByTicker,
   scrapeForm144LiveFeed,
 } from "./scrapers/form144.js";
+import {
+  scrapeForm3ByTicker,
+  scrapeForm3LiveFeed,
+} from "./scrapers/form3.js";
 import {
   listTrackedFunds,
   scrape13FByFund,
@@ -91,6 +100,49 @@ const COMMANDS: Record<string, CliCommand> = {
         );
       }
       return result;
+    },
+  },
+  form3: {
+    description:
+      "Scrape Form 3 initial-ownership snapshots for a single ticker (add --save to write to Firestore). Form 3 = baseline filed when someone first becomes an insider — gives Form 4 deltas an anchor.",
+    run: async (args) => {
+      const ticker = args.find((a) => !a.startsWith("--"));
+      if (!ticker) {
+        throw new Error("Usage: tsx src/scrape.ts form3 <TICKER> [--save]");
+      }
+      const holdings = await scrapeForm3ByTicker(ticker);
+      if (hasSaveFlag(args)) {
+        console.error(
+          `[save] Writing ${holdings.length} initial-ownership rows to Firestore...`,
+        );
+        const result = await saveForm3Holdings(holdings);
+        console.error(
+          `[save] Saved ${result.saved} rows to ${result.collection}`,
+        );
+      }
+      return holdings;
+    },
+  },
+  "form3-feed": {
+    description:
+      "Scrape Form 3 initial-ownership snapshots across all companies for the last N days (default 7; add --save to write to Firestore). Use to spot newly-named insiders and freshly-disclosed 10%+ holders.",
+    run: async (args) => {
+      const positional = args.find((a) => !a.startsWith("--"));
+      const days = positional ? parseInt(positional, 10) : 7;
+      if (Number.isNaN(days) || days < 1) {
+        throw new Error("Days must be a positive integer");
+      }
+      const holdings = await scrapeForm3LiveFeed(days);
+      if (hasSaveFlag(args)) {
+        console.error(
+          `[save] Writing ${holdings.length} initial-ownership rows to Firestore...`,
+        );
+        const result = await saveForm3Holdings(holdings);
+        console.error(
+          `[save] Saved ${result.saved} rows to ${result.collection}`,
+        );
+      }
+      return holdings;
     },
   },
   form4: {

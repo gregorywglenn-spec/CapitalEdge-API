@@ -22,6 +22,8 @@ import type {
   CongressionalTradesQuery,
   Form144Filing,
   Form144FilingsQuery,
+  Form3Holding,
+  Form3HoldingsQuery,
   InsiderTransaction,
   InsiderTransactionsQuery,
   InstitutionalHolding,
@@ -476,6 +478,98 @@ export async function saveForm144Filings(
     const chunk = filings.slice(i, i + BATCH_SIZE);
     for (const filing of chunk) {
       batch.set(collection.doc(filing.id), filing, { merge: true });
+    }
+    await batch.commit();
+    saved += chunk.length;
+  }
+
+  return { saved, collection: COLLECTION };
+}
+
+// ─── Initial ownership baselines (Form 3) query ────────────────────────────
+
+export async function queryForm3Holdings(
+  query: Form3HoldingsQuery,
+): Promise<QueryResult<Form3Holding>> {
+  if (isStubMode()) {
+    // No stub data for Form 3 yet — returns empty in stub mode.
+    return { results: [], has_more: false };
+  }
+
+  const db = await getLiveDb();
+  let q: FirestoreQuery = db.collection("initial_ownership_baselines");
+
+  if (query.ticker) q = q.where("ticker", "==", query.ticker);
+  if (query.company_cik) {
+    q = q.where("company_cik", "==", query.company_cik);
+  }
+  if (query.filer_cik) q = q.where("filer_cik", "==", query.filer_cik);
+  if (query.is_derivative !== undefined) {
+    q = q.where("is_derivative", "==", query.is_derivative);
+  }
+
+  const sortField = query.sort_by ?? "filing_date";
+  const sortOrder = query.sort_order ?? "desc";
+
+  if (query.since) q = q.where(sortField, ">=", query.since);
+  if (query.until) q = q.where(sortField, "<=", query.until);
+
+  q = q.orderBy(sortField, sortOrder);
+
+  const userLimit = query.limit ?? 50;
+
+  // Same substring-filter consideration as the other collections: when
+  // filer_name is set, pull a much larger Firestore window so the client-side
+  // filter sees the full universe.
+  const fetchLimit = query.filer_name ? 5000 : userLimit + 1;
+  q = q.limit(fetchLimit);
+
+  const snap = await q.get();
+  let docs = snap.docs.map((d) => d.data() as Form3Holding);
+
+  if (query.filer_name) {
+    const needle = query.filer_name.toLowerCase();
+    docs = docs.filter((f) =>
+      (f.filer_name ?? "").toLowerCase().includes(needle),
+    );
+  }
+
+  const has_more = docs.length > userLimit;
+  const results = docs.slice(0, userLimit);
+  return { results, has_more };
+}
+
+/**
+ * Save scraped Form 3 holdings to Firestore. Idempotent — re-running the
+ * scraper for the same accession writes the same doc IDs (`{accession}-
+ * {ticker}-ND-{lineNumber}` for non-derivative or `-D-{lineNumber}` for
+ * derivative) with merge:true semantics, no duplicates.
+ *
+ * Throws if called in stub mode (no service account).
+ */
+export async function saveForm3Holdings(
+  holdings: Form3Holding[],
+): Promise<{ saved: number; collection: string }> {
+  if (isStubMode()) {
+    throw new Error(
+      "Cannot save to Firestore in stub mode (no service account at secrets/service-account.json)",
+    );
+  }
+  const COLLECTION = "initial_ownership_baselines";
+  if (holdings.length === 0) {
+    return { saved: 0, collection: COLLECTION };
+  }
+
+  const db = await getLiveDb();
+  const collection = db.collection(COLLECTION);
+  const BATCH_SIZE = 400;
+  let saved = 0;
+
+  for (let i = 0; i < holdings.length; i += BATCH_SIZE) {
+    const batch = db.batch();
+    const chunk = holdings.slice(i, i + BATCH_SIZE);
+    for (const holding of chunk) {
+      batch.set(collection.doc(holding.id), holding, { merge: true });
     }
     await batch.commit();
     saved += chunk.length;

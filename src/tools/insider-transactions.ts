@@ -13,11 +13,14 @@
  */
 
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
-import { queryInsiderTransactions } from "../firestore.js";
+import {
+  queryForm3Holdings,
+  queryInsiderTransactions,
+} from "../firestore.js";
 import type {
-  InsiderTransaction,
+  Form3Holding,
+  InsiderTransactionsEnvelope,
   InsiderTransactionsQuery,
-  ResultEnvelope,
 } from "../types.js";
 
 // ─── Tool definition ────────────────────────────────────────────────────────
@@ -40,6 +43,13 @@ export const definition: Tool = {
     "This tool returns only open-market purchases (transaction_code 'P') and",
     "sales (transaction_code 'S'). It excludes grants, option exercises,",
     "tax-withholding sales, and other non-discretionary transactions.",
+    "",
+    "Optional include_baseline=true: also returns matching Form 3 initial-",
+    "ownership records (the insider's *starting* position when they first",
+    "became an insider) under a `baselines` field. Use this when you need",
+    "to know how big a sale is relative to the insider's full position —",
+    "Form 4 alone shows the delta, Form 3 anchors the baseline. Requires",
+    "ticker or company_cik to be set.",
   ].join(" "),
   inputSchema: {
     type: "object",
@@ -95,6 +105,11 @@ export const definition: Tool = {
         maximum: 500,
         description: "Maximum records to return. Default 50, max 500.",
       },
+      include_baseline: {
+        type: "boolean",
+        description:
+          "When true, the response includes matching Form 3 initial-ownership records under a `baselines` field — lets you anchor Form 4 deltas to the insider's starting position. Requires ticker or company_cik. Default false.",
+      },
     },
     additionalProperties: false,
   },
@@ -104,15 +119,57 @@ export const definition: Tool = {
 
 export async function handler(
   args: unknown,
-): Promise<ResultEnvelope<InsiderTransaction>> {
+): Promise<InsiderTransactionsEnvelope> {
   const query = validateAndNormalize(args);
-  const { results, has_more } = await queryInsiderTransactions(query);
-  return {
+
+  // Run trades fetch and (optionally) baselines fetch in parallel.
+  // Baselines lookup uses the same ticker / company_cik / officer_name
+  // filters so the returned Form 3 rows align with the active query.
+  const tradesPromise = queryInsiderTransactions(query);
+  const baselinesPromise: Promise<Form3Holding[]> = query.include_baseline
+    ? fetchMatchingBaselines(query)
+    : Promise.resolve([]);
+
+  const [{ results, has_more }, baselines] = await Promise.all([
+    tradesPromise,
+    baselinesPromise,
+  ]);
+
+  const envelope: InsiderTransactionsEnvelope = {
     results,
     count: results.length,
     has_more,
     query: query as Record<string, unknown>,
   };
+
+  if (query.include_baseline) {
+    envelope.baselines = baselines;
+  }
+
+  return envelope;
+}
+
+/**
+ * Pull Form 3 baseline rows that align with the active insider-trades
+ * query. Matches by ticker or company_cik; if officer_name substring is
+ * set, applies the same substring against filer_name (Form 3 doesn't have
+ * an "officer_name" column — same person, different schema field).
+ *
+ * Capped at 100 baselines — agents don't typically need more, and bigger
+ * pulls would dwarf the trades payload.
+ */
+async function fetchMatchingBaselines(
+  query: InsiderTransactionsQuery,
+): Promise<Form3Holding[]> {
+  const { results } = await queryForm3Holdings({
+    ticker: query.ticker,
+    company_cik: query.company_cik,
+    filer_name: query.officer_name,
+    sort_by: "filing_date",
+    sort_order: "desc",
+    limit: 100,
+  });
+  return results;
 }
 
 // ─── Input validation ───────────────────────────────────────────────────────
@@ -218,6 +275,18 @@ function validateAndNormalize(raw: unknown): InsiderTransactionsQuery {
       );
     }
     out.limit = args.limit;
+  }
+
+  if (args.include_baseline !== undefined) {
+    if (typeof args.include_baseline !== "boolean") {
+      throw new Error("include_baseline must be a boolean");
+    }
+    if (args.include_baseline && !out.ticker && !out.company_cik) {
+      throw new Error(
+        "INVALID_BASELINE_QUERY: include_baseline=true requires ticker or company_cik to be set",
+      );
+    }
+    out.include_baseline = args.include_baseline;
   }
 
   return out;
