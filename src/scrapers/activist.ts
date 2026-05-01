@@ -389,7 +389,16 @@ async function parseSchedule13G(
   // 13G uses lowercase "Cik" in issuerCik but defend against template variation.
   const issuerCik = read(issuer.issuerCik) || read(issuer.issuerCIK);
   const issuerName = read(issuer.issuerName) || null;
-  const cusip = read(issuer.issuerCusip);
+  // 13G uses the same nested CUSIP structure as 13D — issuerCusips.issuerCusipNumber,
+  // not a flat issuerCusip field. (My earlier scout's regex tag-list confused
+  // <issuerCusips> with <issuerCusip> because the matcher ate the trailing char.)
+  // Try the nested path first, fall back to flat for any unusual template.
+  const cusipRaw =
+    issuer.issuerCusips?.issuerCusipNumber ?? issuer.issuerCusip;
+  const cusips = asArray(cusipRaw)
+    .map((c) => read(c))
+    .filter((c) => c);
+  const cusip = cusips[0] ?? "";
 
   const eventDate = toIsoDate(
     read(formData.coverPageHeader?.eventDateRequiresFilingThisStatement),
