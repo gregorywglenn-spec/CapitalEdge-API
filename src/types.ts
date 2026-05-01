@@ -167,6 +167,98 @@ export interface Form144FilingsQuery {
   limit?: number;
 }
 
+// ─── Federal contract awards (USAspending.gov) ─────────────────────────────
+
+/**
+ * One federal contract award row from USAspending.gov. Each record represents
+ * a single award (A/B/C/D type — BPA Call, Purchase Order, Delivery Order,
+ * Definitive Contract). Modifications appear as separate awards in the API
+ * — this is the prime award snapshot, not action-level granularity.
+ *
+ * The killer political-alpha query: join `congressional_trades` to this
+ * collection by recipient_name (substring) and timing — "Senator buys LMT
+ * on Mar 15, defense contract awarded to Lockheed Martin on Mar 17."
+ *
+ * Pure-publisher posture per TOOL_DESIGN.md — no derived signal columns,
+ * just normalized facts from USAspending's API.
+ *
+ * Source: api.usaspending.gov /api/v2/search/spending_by_award/. Public,
+ * no auth, returns JSON. First non-SEC scraper in the project.
+ */
+export interface FederalContractAward {
+  /** USAspending generated_internal_id (CONT_AWD_xxx_yyy). Stable across modifications. */
+  id: string;
+  /** Human-readable contract number (e.g., "NNJ06TA25C"). */
+  award_id: string;
+  /** Recipient legal name as filed (e.g., "LOCKHEED MARTIN CORP"). */
+  recipient_name: string;
+  /** Recipient Unique Entity ID — replaced DUNS in 2022. 12-char alphanumeric. */
+  recipient_uei: string;
+  /** USAspending's UUID-style internal recipient ID (used for deep-linking). */
+  recipient_id: string;
+  /**
+   * Total contract value currently obligated (USD). Includes all
+   * modifications-to-date. Often much larger than `total_outlays`.
+   */
+  award_amount: number;
+  /** Actual disbursements to date (USD). What's been paid out so far. */
+  total_outlays: number;
+  /**
+   * Free-text description of the work. Often ALL CAPS in source data.
+   * Sometimes includes Treasury Account Symbol ("TAS::80 0124::") prefix
+   * — kept as-is for fidelity; agents can strip if needed.
+   */
+  description: string;
+  /** "DEFINITIVE CONTRACT", "PURCHASE ORDER", "BPA CALL", "DELIVERY ORDER". */
+  contract_award_type: string;
+  /** "Department of Defense", "National Aeronautics and Space Administration", etc. */
+  awarding_agency: string;
+  /** Sub-agency within the awarding agency (e.g., "Department of the Air Force"). */
+  awarding_subagency: string;
+  /** North American Industry Classification System code (6 digits). */
+  naics_code: string;
+  naics_description: string;
+  /** Product or Service Code (4 chars). Defense-style codes: AR33, R425, etc. */
+  psc_code: string;
+  psc_description: string;
+  /**
+   * Disaster Emergency Fund codes from supplemental appropriations.
+   * "L" / "M" / "N" / "O" / "P" / "Q" tagging COVID-19 Recovery Act funds, etc.
+   */
+  def_codes: string[];
+  /** Period of performance start, ISO YYYY-MM-DD. */
+  start_date: string;
+  /** Period of performance current end, ISO YYYY-MM-DD. */
+  end_date: string;
+  /**
+   * Last action date — when this award was last modified or signed.
+   * The most useful "happened recently" signal. ISO YYYY-MM-DDTHH:MM:SS.
+   */
+  last_modified_date: string;
+  /** 2-letter US state where the work is performed. */
+  place_of_performance_state: string;
+  /** Direct link to USAspending's award page. */
+  award_url: string;
+  data_source: "USASPENDING";
+}
+
+/**
+ * Validated query parameters for the (eventual) get_federal_contracts MCP tool.
+ */
+export interface FederalContractAwardsQuery {
+  recipient_name?: string;
+  recipient_uei?: string;
+  awarding_agency?: string;
+  naics_code?: string;
+  psc_code?: string;
+  min_amount?: number;
+  since?: string;
+  until?: string;
+  sort_by?: "last_modified_date" | "start_date" | "award_amount" | "total_outlays";
+  sort_order?: "desc" | "asc";
+  limit?: number;
+}
+
 // ─── Activist / 5%+ ownership disclosures (Schedule 13D / 13G) ─────────────
 
 /**

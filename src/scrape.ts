@@ -3,6 +3,10 @@
  *
  * Usage:
  *   tsx src/scrape.ts ping                       Verify Firestore connection
+ *   tsx src/scrape.ts usaspending <RECIPIENT> [days]
+ *                                                Federal contract awards for one recipient (default 365 days)
+ *   tsx src/scrape.ts usaspending-feed [days] --save
+ *                                                Recent federal contracts across all recipients (default 7 days)
  *   tsx src/scrape.ts 13d-13g <TICKER>           Schedule 13D/13G stakes filed against one issuer
  *   tsx src/scrape.ts 13d-13g <TICKER> --save    ...and write them to Firestore
  *   tsx src/scrape.ts 13d-13g-feed [days]        Schedule 13D/13G across all issuers, last N days
@@ -47,6 +51,7 @@ import {
   pingFirestore,
   saveActivistOwnership,
   saveCongressionalTrades,
+  saveFederalContractAwards,
   saveForm144Filings,
   saveForm3Holdings,
   saveInsiderTransactions,
@@ -65,6 +70,10 @@ import {
   scrapeActivistByTicker,
   scrapeActivistLiveFeed,
 } from "./scrapers/activist.js";
+import {
+  scrapeContractsByRecipient,
+  scrapeContractsLiveFeed,
+} from "./scrapers/usaspending.js";
 import {
   listTrackedFunds,
   scrape13FByFund,
@@ -109,6 +118,57 @@ const COMMANDS: Record<string, CliCommand> = {
         );
       }
       return result;
+    },
+  },
+  usaspending: {
+    description:
+      "Scrape federal contract awards for a recipient name (substring match) over the last N days (add --save to write to Firestore). Use 'Lockheed Martin' to catch all LMT subsidiaries; use a specific subsidiary name to narrow.",
+    run: async (args) => {
+      const positional = args.filter((a) => !a.startsWith("--"));
+      const recipientName = positional[0];
+      if (!recipientName) {
+        throw new Error(
+          "Usage: tsx src/scrape.ts usaspending <RECIPIENT_NAME> [days] [--save]",
+        );
+      }
+      const daysArg = positional[1];
+      const days = daysArg ? parseInt(daysArg, 10) : 365;
+      if (Number.isNaN(days) || days < 1) {
+        throw new Error("Days must be a positive integer");
+      }
+      const awards = await scrapeContractsByRecipient(recipientName, days);
+      if (hasSaveFlag(args)) {
+        console.error(
+          `[save] Writing ${awards.length} federal contract awards to Firestore...`,
+        );
+        const result = await saveFederalContractAwards(awards);
+        console.error(
+          `[save] Saved ${result.saved} awards to ${result.collection}`,
+        );
+      }
+      return awards;
+    },
+  },
+  "usaspending-feed": {
+    description:
+      "Scrape recent federal contract awards across all recipients for the last N days (default 7; add --save to write to Firestore). The political-alpha source — joins to congressional_trades by recipient_name + date.",
+    run: async (args) => {
+      const positional = args.find((a) => !a.startsWith("--"));
+      const days = positional ? parseInt(positional, 10) : 7;
+      if (Number.isNaN(days) || days < 1) {
+        throw new Error("Days must be a positive integer");
+      }
+      const awards = await scrapeContractsLiveFeed(days);
+      if (hasSaveFlag(args)) {
+        console.error(
+          `[save] Writing ${awards.length} federal contract awards to Firestore...`,
+        );
+        const result = await saveFederalContractAwards(awards);
+        console.error(
+          `[save] Saved ${result.saved} awards to ${result.collection}`,
+        );
+      }
+      return awards;
     },
   },
   "13d-13g": {

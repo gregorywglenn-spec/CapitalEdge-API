@@ -153,6 +153,38 @@
         { "fieldPath": "ticker", "order": "ASCENDING" },
         { "fieldPath": "percent_of_class", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "federal_contracts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "recipient_uei", "order": "ASCENDING" },
+        { "fieldPath": "last_modified_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "federal_contracts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "awarding_agency", "order": "ASCENDING" },
+        { "fieldPath": "last_modified_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "federal_contracts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "naics_code", "order": "ASCENDING" },
+        { "fieldPath": "last_modified_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "federal_contracts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "awarding_agency", "order": "ASCENDING" },
+        { "fieldPath": "award_amount", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

@@ -8,6 +8,7 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import * as activistStakes from "./activist-stakes.js";
 import * as congressionalTrades from "./congressional-trades.js";
+import * as federalContracts from "./federal-contracts.js";
 import * as insiderTransactions from "./insider-transactions.js";
 import * as institutionalHoldings from "./institutional-holdings.js";
 import * as plannedInsiderSales from "./planned-insider-sales.js";
@@ -23,6 +24,7 @@ export const TOOLS: ToolModule[] = [
   congressionalTrades,
   plannedInsiderSales,
   activistStakes,
+  federalContracts,
 ];
 
 export function findTool(name: string): ToolModule | undefined {

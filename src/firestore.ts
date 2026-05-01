@@ -22,6 +22,8 @@ import type {
   ActivistOwnershipQuery,
   CongressionalTrade,
   CongressionalTradesQuery,
+  FederalContractAward,
+  FederalContractAwardsQuery,
   Form144Filing,
   Form144FilingsQuery,
   Form3Holding,
@@ -667,6 +669,98 @@ export async function saveActivistOwnership(
     const chunk = rows.slice(i, i + BATCH_SIZE);
     for (const row of chunk) {
       batch.set(collection.doc(row.id), row, { merge: true });
+    }
+    await batch.commit();
+    saved += chunk.length;
+  }
+
+  return { saved, collection: COLLECTION };
+}
+
+// ─── Federal contract awards (USAspending) query ──────────────────────────
+
+export async function queryFederalContractAwards(
+  query: FederalContractAwardsQuery,
+): Promise<QueryResult<FederalContractAward>> {
+  if (isStubMode()) {
+    return { results: [], has_more: false };
+  }
+
+  const db = await getLiveDb();
+  let q: FirestoreQuery = db.collection("federal_contracts");
+
+  if (query.recipient_uei) {
+    q = q.where("recipient_uei", "==", query.recipient_uei);
+  }
+  if (query.awarding_agency) {
+    q = q.where("awarding_agency", "==", query.awarding_agency);
+  }
+  if (query.naics_code) q = q.where("naics_code", "==", query.naics_code);
+  if (query.psc_code) q = q.where("psc_code", "==", query.psc_code);
+  if (query.min_amount !== undefined) {
+    q = q.where("award_amount", ">=", query.min_amount);
+  }
+
+  const sortField = query.sort_by ?? "last_modified_date";
+  const sortOrder = query.sort_order ?? "desc";
+
+  if (query.since) q = q.where(sortField, ">=", query.since);
+  if (query.until) q = q.where(sortField, "<=", query.until);
+
+  q = q.orderBy(sortField, sortOrder);
+
+  const userLimit = query.limit ?? 50;
+
+  // Same substring-filter consideration as the other collections: when
+  // recipient_name (substring) is set, pull a much larger Firestore window
+  // so the client-side filter sees the full universe.
+  const fetchLimit = query.recipient_name ? 5000 : userLimit + 1;
+  q = q.limit(fetchLimit);
+
+  const snap = await q.get();
+  let docs = snap.docs.map((d) => d.data() as FederalContractAward);
+
+  if (query.recipient_name) {
+    const needle = query.recipient_name.toLowerCase();
+    docs = docs.filter((c) =>
+      (c.recipient_name ?? "").toLowerCase().includes(needle),
+    );
+  }
+
+  const has_more = docs.length > userLimit;
+  const results = docs.slice(0, userLimit);
+  return { results, has_more };
+}
+
+/**
+ * Save scraped federal contract awards to Firestore. Idempotent — re-running
+ * the scraper writes the same doc IDs (USAspending's generated_internal_id)
+ * with merge:true semantics, so contract modifications correctly overwrite
+ * the prior snapshot.
+ */
+export async function saveFederalContractAwards(
+  awards: FederalContractAward[],
+): Promise<{ saved: number; collection: string }> {
+  if (isStubMode()) {
+    throw new Error(
+      "Cannot save to Firestore in stub mode (no service account at secrets/service-account.json)",
+    );
+  }
+  const COLLECTION = "federal_contracts";
+  if (awards.length === 0) {
+    return { saved: 0, collection: COLLECTION };
+  }
+
+  const db = await getLiveDb();
+  const collection = db.collection(COLLECTION);
+  const BATCH_SIZE = 400;
+  let saved = 0;
+
+  for (let i = 0; i < awards.length; i += BATCH_SIZE) {
+    const batch = db.batch();
+    const chunk = awards.slice(i, i + BATCH_SIZE);
+    for (const award of chunk) {
+      batch.set(collection.doc(award.id), award, { merge: true });
     }
     await batch.commit();
     saved += chunk.length;
