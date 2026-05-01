@@ -9,6 +9,14 @@
       ]
     },
     {
+      "collectionGroup": "insider_trades",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "company_cik", "order": "ASCENDING" },
+        { "fieldPath": "disclosure_date", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "institutional_holdings",
       "queryScope": "COLLECTION",
       "fields": [
@@ -71,6 +79,14 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "ticker", "order": "ASCENDING" },
+        { "fieldPath": "filing_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "initial_ownership_baselines",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "company_cik", "order": "ASCENDING" },
         { "fieldPath": "filing_date", "order": "DESCENDING" }
       ]
     },
