@@ -28,7 +28,10 @@
  */
 
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import { onRequest } from "firebase-functions/v2/https";
+import { defineSecret } from "firebase-functions/params";
 import { logger } from "firebase-functions/v2";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 
 import {
   saveActivistOwnership,
@@ -43,6 +46,11 @@ import {
   saveLobbyingFilings,
   saveMaterialEvents,
 } from "../../src/firestore.js";
+import {
+  applyToolHandlers,
+  createMcpServer,
+} from "../../src/server-setup.js";
+import { TOOLS } from "../../src/tools/index.js";
 import { scrapeActivistLiveFeed } from "../../src/scrapers/activist.js";
 import {
   scrapeBioguideCatalog,
@@ -381,6 +389,98 @@ export const scrapeBioguideHistoricalMonthly = onSchedule(
       logger.info(
         `[bioguide-historical] saved ${r.saved} legislators to ${r.collection}`,
       );
+    }
+  },
+);
+
+// ─── MCP HTTP server (remote-reachable tool API) ──────────────────────────
+
+const SERVER_NAME = "capital-edge-mcp";
+const SERVER_VERSION = "0.14.0";
+
+/**
+ * The bearer token clients send in `Authorization: Bearer <key>` headers.
+ * Stored in Google Secret Manager via `firebase functions:secrets:set
+ * MCP_API_KEY`. Rotate with the same command.
+ */
+const mcpApiKey = defineSecret("MCP_API_KEY");
+
+/**
+ * MCP server exposed as an HTTPS endpoint at /mcp. Stateless (each request
+ * spins up a fresh Server + transport pair, runs the request, tears down).
+ *
+ * Auth: bearer token in the Authorization header. The token is read from
+ * Secret Manager via the firebase-functions/params helper.
+ *
+ * Cold-start: ~5-10 seconds on the bundled 14 MB function. After the first
+ * request, the container stays warm for ~15 minutes of idle. Acceptable
+ * for v1; can split into a dedicated MCP-only function later if it
+ * becomes user-facing latency.
+ *
+ * Health-check: GET /mcp returns JSON with version + tool count, NO auth
+ * required. Useful for uptime monitoring.
+ */
+export const mcp = onRequest(
+  {
+    region: REGION,
+    memory: "1GiB",
+    timeoutSeconds: 300,
+    secrets: [mcpApiKey],
+    concurrency: 10,
+    cors: false,
+  },
+  async (req, res) => {
+    // Health check — auth-free GET returns server status.
+    if (req.method === "GET") {
+      res.json({
+        status: "ok",
+        service: SERVER_NAME,
+        version: SERVER_VERSION,
+        tools: TOOLS.length,
+        tool_names: TOOLS.map((t) => t.definition.name),
+      });
+      return;
+    }
+
+    // MCP protocol uses POST exclusively.
+    if (req.method !== "POST") {
+      res.status(405).json({ error: "Method not allowed; use POST" });
+      return;
+    }
+
+    // Bearer-token auth.
+    const authHeader = req.header("authorization") ?? "";
+    const m = authHeader.match(/^Bearer\s+(.+)$/i);
+    const expected = mcpApiKey.value();
+    if (!m || m[1] !== expected) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    // Build a fresh server + stateless transport per request.
+    let server: ReturnType<typeof createMcpServer> | null = null;
+    let transport: StreamableHTTPServerTransport | null = null;
+    try {
+      server = createMcpServer(SERVER_NAME, SERVER_VERSION);
+      applyToolHandlers(server);
+
+      transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined, // stateless mode
+      });
+      await server.connect(transport);
+      await transport.handleRequest(req, res, req.body);
+    } catch (err) {
+      logger.error("[mcp] request handler error", err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Internal server error" });
+      }
+    } finally {
+      // Tear down once the response is fully sent. Stateless mode means
+      // there's nothing to keep around between requests.
+      res.on("close", () => {
+        transport?.close().catch(() => {});
+        server?.close().catch(() => {});
+      });
     }
   },
 );

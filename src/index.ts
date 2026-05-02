@@ -25,82 +25,20 @@
  * and TOOL_DESIGN.md in the project root for full context.
  */
 
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
 import { isStubMode } from "./firestore.js";
-import { findTool, TOOLS } from "./tools/index.js";
+import { applyToolHandlers, createMcpServer } from "./server-setup.js";
+import { TOOLS } from "./tools/index.js";
 
 const SERVER_NAME = "capital-edge-mcp";
-const SERVER_VERSION = "0.13.0";
-
-const server = new Server(
-  {
-    name: SERVER_NAME,
-    version: SERVER_VERSION,
-  },
-  {
-    capabilities: {
-      tools: {},
-    },
-  },
-);
-
-// ─── List tools ─────────────────────────────────────────────────────────────
-
-server.setRequestHandler(ListToolsRequestSchema, async () => {
-  return {
-    tools: TOOLS.map((t) => t.definition),
-  };
-});
-
-// ─── Call tool ──────────────────────────────────────────────────────────────
-
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const tool = findTool(request.params.name);
-  if (!tool) {
-    return errorResult("UNKNOWN_TOOL", `No tool registered named '${request.params.name}'`);
-  }
-
-  try {
-    const result = await tool.handler(request.params.arguments ?? {});
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(result, null, 2),
-        },
-      ],
-    };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    // Pull a code prefix out of the message if the handler used the
-    // "CODE: details" convention; otherwise fall back to INTERNAL_ERROR.
-    const codeMatch = /^([A-Z][A-Z0-9_]+):\s*/.exec(message);
-    const code = codeMatch ? codeMatch[1]! : "INTERNAL_ERROR";
-    const cleanMessage = codeMatch ? message.slice(codeMatch[0].length) : message;
-    return errorResult(code, cleanMessage);
-  }
-});
-
-function errorResult(code: string, message: string) {
-  return {
-    content: [
-      {
-        type: "text" as const,
-        text: JSON.stringify({ code, message }, null, 2),
-      },
-    ],
-    isError: true,
-  };
-}
+const SERVER_VERSION = "0.14.0";
 
 // ─── Boot ───────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
+  const server = createMcpServer(SERVER_NAME, SERVER_VERSION);
+  applyToolHandlers(server);
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
