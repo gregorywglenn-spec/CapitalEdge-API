@@ -327,7 +327,7 @@ In rough priority order. Day 5 night wrap: **9 MCP tools live, server v0.13.0, 1
 
 7. **Commercial: brand, domain, customer validation, pricing, marketing site.** Not engineering. Don't build deployment infrastructure ahead of customer interest. Bottom-up funnel strategy applies (see Hard Lessons).
 
-8. **Open architectural question (Greg flagged Day 3 late evening, parking for now):** should the dashboard at `C:\CapitalEdge` consume from the hub's Firestore directly (Option B) or keep the locked dual-scrape posture (Option A)? Data shapes are deliberately compatible — `congressional_trades`, `insider_trades`, `institutional_holdings` here match the dashboard's planned schema. Re-opening this depends on Derek's actual scraper-pipeline state and partnership-friction tolerance. Greg said "I will revisit the question." Don't decide for him.
+8. **Architectural decision Day 5 night — Greg leaning Option B (consolidate scrapers).** Direct quote: *"the scrapers between capitaledge and capitaledge-API need to be shared. no sense in having duplicates or similar scrapers doing the same work that one could do."* Implementation depends on Derek coordination — he runs the dashboard project's scraper pipeline. Practical steps when this lands: (a) the dashboard at `C:\CapitalEdge` reads from `capitaledge-api`'s Firestore directly via service-account credentials, (b) the dashboard project's scrapers get retired in favor of the autonomous Cloud Functions in this repo, (c) any signal/derived fields the dashboard needs (convergence_score, signal_weight, tax-engine outputs) get computed dashboard-side from the raw publisher data — preserves pure-publisher posture on this side. **Don't move on this without Greg's explicit go-ahead after his coordination with Derek.**
 
 ## Files In This Project
 
@@ -386,7 +386,14 @@ In rough priority order. Day 5 night wrap: **9 MCP tools live, server v0.13.0, 1
 - **Firebase project:** https://console.firebase.google.com/project/capitaledge-api/overview
   - Firestore database: `(default)` in `us-central1`, production-mode rules
   - Service account: `firebase-adminsdk-fbsvc@capitaledge-api.iam.gserviceaccount.com`
-  - Plan: Spark (free tier). Will need Blaze for Cloud Functions deployment later.
+  - Plan: Blaze (pay-as-you-go) — confirmed Day 5 evening
+- **Public MCP HTTPS endpoint** (Day 5 late night): `https://us-central1-capitaledge-api.cloudfunctions.net/mcp`
+  - Auth: bearer token from Secret Manager (`MCP_API_KEY`)
+  - Health-check (no auth): GET `/`
+- **Domain (confirmed Day 5 late night):** `capitaledge.app`
+  - Email accounts set up for Greg + Derek
+  - Custom-domain mapping for the MCP endpoint not yet wired (likely `api.capitaledge.app` or `mcp.capitaledge.app`)
+  - Dashboard / brand homepage hasn't been wired to the apex yet either
 - **Capital Edge dashboard project:** `C:\CapitalEdge\` (separate Cowork workspace, owned operationally by Derek)
 
 ## Capital Edge Cross-References (sibling project)
