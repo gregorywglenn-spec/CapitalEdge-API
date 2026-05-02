@@ -3,6 +3,10 @@
  *
  * Usage:
  *   tsx src/scrape.ts ping                       Verify Firestore connection
+ *   tsx src/scrape.ts bioguide [--save]          Ingest unitedstates/congress-legislators
+ *                                                YAML catalog (legislators + committees +
+ *                                                committee memberships joined into one
+ *                                                Legislator record per current member)
  *   tsx src/scrape.ts usaspending <RECIPIENT> [days]
  *                                                Federal contract awards for one recipient (default 365 days)
  *   tsx src/scrape.ts usaspending-feed [days] --save
@@ -56,7 +60,9 @@ import {
   saveForm3Holdings,
   saveInsiderTransactions,
   saveInstitutionalHoldings,
+  saveLegislators,
 } from "./firestore.js";
+import { scrapeBioguideCatalog } from "./scrapers/bioguide.js";
 import { scrapeForm4ByTicker, scrapeForm4LiveFeed } from "./scrapers/form4.js";
 import {
   scrapeForm144ByTicker,
@@ -118,6 +124,23 @@ const COMMANDS: Record<string, CliCommand> = {
         );
       }
       return result;
+    },
+  },
+  bioguide: {
+    description:
+      "Ingest the unitedstates/congress-legislators YAML catalog (legislators-current + committees-current + committee-membership-current). Joins all three into Legislator records with party/state/district/chamber/committee_assignments. Add --save to write to Firestore. ~5 seconds end-to-end.",
+    run: async (args) => {
+      const legislators = await scrapeBioguideCatalog();
+      if (hasSaveFlag(args)) {
+        console.error(
+          `[save] Writing ${legislators.length} legislator records to Firestore...`,
+        );
+        const result = await saveLegislators(legislators);
+        console.error(
+          `[save] Saved ${result.saved} legislators to ${result.collection}`,
+        );
+      }
+      return legislators;
     },
   },
   usaspending: {

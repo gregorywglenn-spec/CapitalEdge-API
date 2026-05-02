@@ -59,7 +59,7 @@ export const definition: Tool = {
       bioguide_id: {
         type: "string",
         description:
-          "Member's permanent congressional ID, e.g. 'C001098' for Susan Collins. Preferred over member_name when known. Leave empty until the bioguide catalog is populated.",
+          "Member's permanent congressional ID, e.g. 'C001035' for Susan Collins. Preferred over member_name when known. Pair with get_member_profile to enrich a trade with the member's party/state/committee assignments.",
       },
       chamber: {
         type: "string",
@@ -165,7 +165,7 @@ function validateAndNormalize(raw: unknown): CongressionalTradesQuery {
       !/^[A-Z]\d{6}$/.test(args.bioguide_id)
     ) {
       throw new Error(
-        `INVALID bioguide_id: '${String(args.bioguide_id)}' — expected single uppercase letter followed by 6 digits, e.g. 'C001098'`,
+        `INVALID bioguide_id: '${String(args.bioguide_id)}' — expected single uppercase letter followed by 6 digits, e.g. 'C001035'`,
       );
     }
     out.bioguide_id = args.bioguide_id;

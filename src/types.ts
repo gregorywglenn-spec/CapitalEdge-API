@@ -167,6 +167,99 @@ export interface Form144FilingsQuery {
   limit?: number;
 }
 
+// ─── Legislators (unitedstates/congress-legislators catalog) ──────────────
+
+/**
+ * One row in the committee_assignments[] array on a Legislator. A
+ * legislator can sit on a full committee (e.g., "HSAG") AND its
+ * subcommittees (e.g., "HSAG15") simultaneously — each is its own row.
+ *
+ * party_role is the legislator's caucus on this committee — typically
+ * tracks their party but the YAML uses "majority"/"minority" to capture
+ * floor-control state. leadership_title is empty for rank-and-file.
+ */
+export interface CommitteeAssignment {
+  committee_id: string; // e.g., "HSAG" (full) or "HSAG15" (subcommittee)
+  committee_name: string;
+  /** "house" | "senate" | "joint". Inherited from parent committee. */
+  committee_type: string;
+  /** True for subcommittee rows; in that case parent_committee_id is set. */
+  is_subcommittee: boolean;
+  parent_committee_id: string | null;
+  /** "majority" | "minority". Filer's caucus on the committee. */
+  party_role: string;
+  /** Numeric rank within their caucus (1 = chair / ranking member). */
+  rank: number | null;
+  /** "Chairman" | "Ranking Member" | "Vice Chairman" | etc. Empty for rank-and-file. */
+  leadership_title: string;
+}
+
+/**
+ * One legislator (House Representative or Senator) record from the
+ * unitedstates/congress-legislators catalog. Keyed by bioguide_id —
+ * the permanent member identifier (e.g., "C001035" for Susan Collins).
+ *
+ * The join key for every congressional_trades record once bioguide_id
+ * gets backfilled there. The committee_assignments field is the
+ * load-bearing enrichment — without it, "Defense Committee member buys
+ * defense stock" can't be expressed as a query.
+ *
+ * Source: github.com/unitedstates/congress-legislators (public domain).
+ * Three YAMLs combined: legislators-current.yaml +
+ * committees-current.yaml + committee-membership-current.yaml.
+ *
+ * Photos available at theunitedstates.io/images/congress/{size}/{bioguide_id}.jpg
+ * (Cloudflare-protected per CLAUDE.md — we construct the URL but don't
+ * fetch in v1; agents/clients fetch directly).
+ */
+export interface Legislator {
+  bioguide_id: string;
+  full_name: string;
+  first_name: string;
+  last_name: string;
+  middle_name: string;
+  nickname: string;
+  /** "house" | "senate". From the most-recent term in terms[]. */
+  chamber: string;
+  state: string;
+  /** "1", "2", ..., "AL" (at-large). House only — empty string for Senate. */
+  state_district: string;
+  /** "Democrat" | "Republican" | "Independent" | etc. */
+  party: string;
+  /** Senate class 1/2/3 (cycle the seat is up). Null for House members. */
+  senate_class: number | null;
+  /** ISO date — start of the current term. */
+  current_term_start: string;
+  /** ISO date — end of the current term (when they're up for re-election). */
+  current_term_end: string;
+  /** Total number of terms served (1-indexed; their first term is 1). */
+  terms_count: number;
+  birthday: string; // ISO YYYY-MM-DD
+  gender: string; // "M" | "F"
+  /**
+   * Constructed photo URL. theunitedstates.io serves these at multiple
+   * sizes (225x275, 450x550, original). We default to original; clients
+   * can swap the path segment.
+   */
+  photo_url: string;
+  /** All committees + subcommittees this legislator currently sits on. */
+  committee_assignments: CommitteeAssignment[];
+}
+
+/**
+ * Validated query parameters for the get_member_profile MCP tool.
+ */
+export interface LegislatorQuery {
+  bioguide_id?: string;
+  member_name?: string;
+  state?: string;
+  chamber?: "house" | "senate";
+  party?: string;
+  /** Match against any committee_assignments[].committee_id. */
+  committee_id?: string;
+  limit?: number;
+}
+
 // ─── Federal contract awards (USAspending.gov) ─────────────────────────────
 
 /**
@@ -519,7 +612,7 @@ export interface InstitutionalHoldingsQuery {
  * of the transaction itself, whichever is earlier. `reporting_lag_days`
  * is computed against business days for clarity.
  *
- * `bioguide_id` is the permanent member identifier (e.g., "C001098" for
+ * `bioguide_id` is the permanent member identifier (e.g., "C001035" for
  * Susan Collins). Populated from the unitedstates/congress-legislators
  * catalog when that ingestion lands; empty for now.
  */

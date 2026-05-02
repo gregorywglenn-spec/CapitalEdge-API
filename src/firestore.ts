@@ -32,6 +32,8 @@ import type {
   InsiderTransactionsQuery,
   InstitutionalHolding,
   InstitutionalHoldingsQuery,
+  Legislator,
+  LegislatorQuery,
 } from "./types.js";
 
 // Resolve service-account.json relative to the project root, not cwd. This
@@ -761,6 +763,98 @@ export async function saveFederalContractAwards(
     const chunk = awards.slice(i, i + BATCH_SIZE);
     for (const award of chunk) {
       batch.set(collection.doc(award.id), award, { merge: true });
+    }
+    await batch.commit();
+    saved += chunk.length;
+  }
+
+  return { saved, collection: COLLECTION };
+}
+
+// ─── Legislators (bioguide catalog) query ─────────────────────────────────
+
+export async function queryLegislators(
+  query: LegislatorQuery,
+): Promise<QueryResult<Legislator>> {
+  if (isStubMode()) {
+    return { results: [], has_more: false };
+  }
+
+  const db = await getLiveDb();
+  let q: FirestoreQuery = db.collection("legislators");
+
+  if (query.bioguide_id) {
+    // Direct doc lookup is fastest path when bioguide_id is set.
+    const doc = await db.collection("legislators").doc(query.bioguide_id).get();
+    if (!doc.exists) return { results: [], has_more: false };
+    return { results: [doc.data() as Legislator], has_more: false };
+  }
+
+  if (query.state) q = q.where("state", "==", query.state);
+  if (query.chamber) q = q.where("chamber", "==", query.chamber);
+  if (query.party) q = q.where("party", "==", query.party);
+
+  const userLimit = query.limit ?? 50;
+
+  // member_name and committee_id both need post-filter handling — pull a
+  // larger window so the substring/array-contains filter sees the full set.
+  // 600 ceiling is enough for v1 (~540 current legislators).
+  const needsClientFilter = query.member_name || query.committee_id;
+  const fetchLimit = needsClientFilter ? 600 : userLimit + 1;
+  q = q.limit(fetchLimit);
+
+  const snap = await q.get();
+  let docs = snap.docs.map((d) => d.data() as Legislator);
+
+  if (query.member_name) {
+    const needle = query.member_name.toLowerCase();
+    docs = docs.filter((l) => (l.full_name ?? "").toLowerCase().includes(needle));
+  }
+
+  if (query.committee_id) {
+    const code = query.committee_id.toUpperCase();
+    docs = docs.filter((l) =>
+      (l.committee_assignments ?? []).some(
+        (a) => a.committee_id.toUpperCase() === code,
+      ),
+    );
+  }
+
+  const has_more = docs.length > userLimit;
+  const results = docs.slice(0, userLimit);
+  return { results, has_more };
+}
+
+/**
+ * Save the bioguide catalog to Firestore. Doc IDs are bioguide_id
+ * (e.g., "C001035"). Idempotent — re-running the ingestion overwrites
+ * cleanly with merge:true semantics.
+ */
+export async function saveLegislators(
+  legislators: Legislator[],
+): Promise<{ saved: number; collection: string }> {
+  if (isStubMode()) {
+    throw new Error(
+      "Cannot save to Firestore in stub mode (no service account at secrets/service-account.json)",
+    );
+  }
+  const COLLECTION = "legislators";
+  if (legislators.length === 0) {
+    return { saved: 0, collection: COLLECTION };
+  }
+
+  const db = await getLiveDb();
+  const collection = db.collection(COLLECTION);
+  const BATCH_SIZE = 400;
+  let saved = 0;
+
+  for (let i = 0; i < legislators.length; i += BATCH_SIZE) {
+    const batch = db.batch();
+    const chunk = legislators.slice(i, i + BATCH_SIZE);
+    for (const legislator of chunk) {
+      batch.set(collection.doc(legislator.bioguide_id), legislator, {
+        merge: true,
+      });
     }
     await batch.commit();
     saved += chunk.length;

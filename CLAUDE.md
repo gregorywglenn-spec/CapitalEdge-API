@@ -47,6 +47,13 @@ This is the day-1 reading for any AI agent (Claude or otherwise) opening this pr
 - **`headerData` is a SIBLING of `formData` under `edgarSubmission`, not a child.** The `filerInfo.filer.filerCredentials.cik` fallback (used when reportingPersonCIK is missing in the form-side block — common in 13G) lives at `submission.headerData.filerInfo.filer.filerCredentials.cik`, NOT `formData.headerData.*`. Initial parser fell through to undefined and emitted empty filer_cik for every 13G row. Fix: pull `headerData = submission.headerData` separately and pass it through to branch parsers as a separate arg, not as a property of `formData`.
 - **13G `<issuerCusips>` is plural with nested `<issuerCusipNumber>`, NOT a flat `<issuerCusip>`.** The earlier scout's regex tag-list used `/<[a-zA-Z][a-zA-Z0-9_]*/g` which matched `<issuerCusips` AND `<issuerCusipNumber` to the same dedup key `<issuerCusip` (the trailing char got eaten). Looked like a flat field but wasn't. The actual structure is the same as 13D — `issuer.issuerCusips.issuerCusipNumber` with potential array of multiples. Hard Lesson on the discovery method: regex tag-extraction is faster than parsing but loses nesting and plurality. Verify against a real XML fetch before designing field paths.
 - **Scraper-template estimates: plumbing reuse is 30 min, schema discovery + bug-fix iteration is 1.5–2.5 hrs.** Day 4 calibration. Form 144 → Form 3 → 13D/G all reused the SEC-XML plumbing (rawXmlPath, normalizeTicker, sanitizeForDocId, multi-owner OR-handling, CIK reverse-lookup) — that's 30 min of boilerplate every time. But each new form has its own schema surprises that take 1.5–2.5 hours to discover and debug: Form 144's misnamed `securitiesToBeSold`, Form 3's XSL prefix + exchange-prefixed ticker, 13D/G's dual-schema + nested issuerInfo + headerData reach + MM/DD/YYYY dates + plural CUSIP. **Budget 2–3 hrs per new SEC-XML scraper, not "fastest port yet" optimism.** USAspending and other clean-API sources should genuinely be 1–1.5 hrs because they have no schema discovery, just a typed REST envelope.
+- **Phantom-session anti-pattern: when a Cowork/IDE-mounted session reports state that disk doesn't have, salvage the working code, don't trust the session.** Day 5 morning: a previous Cowork session claimed v0.8.0 had been built and committed (`get_member_profile` MCP tool + bioguide ingestion). `git log` and `git fetch origin` both showed `d9ff966` (v0.7.0 USAspending) as latest. The session's *view* of the workspace had v0.8.0 files — the actual disk (and remote) didn't. Resolution: the session wrote its in-memory copies of `bioguide.ts` + `member-profile.ts` to a quarantined `v0.8.0-salvage/` folder with a `SALVAGE_NOTES.md` documenting the diffs needed against the real-disk versions of `types.ts` / `firestore.ts` / `scrape.ts` / `tools/index.ts` / `index.ts` / `package.json`. A fresh Claude Code session then picked up cold from disk + the notes, applied everything, ran `npm install`, typechecked clean, ran `bioguide --save` → 536 legislators saved. **Lesson: when a session says "I committed X" and `git log` says otherwise, treat the session's view as untrusted but recoverable. Quarantine the in-memory files, write self-contained notes, hand off to a fresh cold-boot session. Don't try to debug the phantom in place.**
+- **Mis-quoted bioguide IDs propagate fast — fix every instance the moment you find the first.** The phantom session also seeded a wrong attribution: `C001098 for Susan Collins`. Reality is C001098 = Ted Cruz; C001035 = Collins. The wrong ID landed in **three distinct places** in the real codebase: a JSDoc comment in `types.ts` (CongressionalTrade interface), the **MCP tool description** for `bioguide_id` in `congressional-trades.ts` (worst — agents read this and use it as a worked example), and the example in the input-validation error message. v0.8.0 corrects all three. **Lesson: bioguide IDs are first-letter + 6-digit zero-padded sequential within letter — verify against the canonical YAML (one-line script), don't guess.** Same pattern will hit any other identifier where the format invites mis-quote (CIKs, CUSIPs, bond CUSIPs, NAICS codes).
+- **Clean-API ingestion really is 1–1.5 hours, calibration confirmed.** USAspending Day 4 evening + bioguide Day 5 morning both came in under 1.5 hrs total — public API, typed responses, well-documented schemas, no XSL prefixes, no schema discovery, no parser-build → smoke-test → bug → fix loop. The 2–3 hr budget from Day 4's Hard Lesson applies only to SEC-XML form scrapers (Form 4 / Form 144 / Form 3 / 13D/G). Going forward: when picking the next data source, the API-vs-XML distinction is the single best predictor of build time. FRED, FEC, USPTO, Treasury Direct → 1–1.5 hrs each. Form 13H, 8-K full-body extraction, Senate lobbying portal → 2–3+ hrs.
+- **`legislators-current.yaml` term ordering: LAST entry in `terms[]` is current.** YAML lists terms chronologically; the parser must pick the *last* element to find the current term, not the first. Three-line bug if you reverse it — and the wrong direction silently returns terms from decades ago for senior members (Pelosi's terms[0] is from 1987). Same convention likely holds for any chronological array in the catalog (e.g., `other_names[]`).
+- **House districts can be numeric strings (`"1"`, `"2"`) or letter codes (`"AL"` for at-large). Senate has none.** Normalize `state_district` to a string in the parser so callers don't need to handle the variant shapes. Empty string for Senate is the cleanest neutral value (rather than null) — keeps Firestore equality queries simple.
+- **Subcommittee codes in the unitedstates/congress-legislators catalog are formed by appending the subcommittee's `thomas_id` to the parent committee's `thomas_id`.** Example: `HSAG` (House Agriculture full committee) + `15` (Forestry & Horticulture subcommittee) = `HSAG15`. The convention follows the Library of Congress Thomas system. Agents querying by `committee_id` need to know this — surfacing it in the `get_member_profile` tool description is load-bearing for usability ("HSAG15 for the Forestry & Horticulture subcommittee under House Ag" makes the convention immediately legible).
+- **The `legislators` collection is index-free by design.** Only ~540 records (current Congress); only equality queries (`bioguide_id` doc lookup, `state` / `chamber` / `party` `where` clauses); `member_name` and `committee_id` are post-filtered client-side after pulling a 600-record window. No Firestore composite indexes required for v1, no `firestore.indexes.json` changes for v0.8.0. Rare collection where index-free queries genuinely scale because the universe is so small.
 
 ## What This Project Is
 
@@ -277,28 +284,24 @@ What runs end-to-end **right now**:
 
 ## What's Open / Next Up
 
-In rough priority order. Day 4 evening wrap: **5 of 5 v1 MCP tools live, server v0.6.1, two SEC-XML scrapers shipped this session (Form 3 + 13D/G), all smoke-tested end-to-end through MCP.** Code pushed to GitHub. Indexes deployed. v1 tool surface is officially complete — only `get_member_profile` remains and that's blocked on bioguide ingestion (item 5 below).
+In rough priority order. Day 5 morning wrap: **7 of 7 planned MCP tools live, server v0.8.0.** Day 4 evening had 5 tools at v0.6.1 — Day 4 night→Day 5 morning shipped USAspending (`get_federal_contracts` at v0.7.0, commit `d9ff966`) then bioguide ingestion + `get_member_profile` (v0.8.0, this commit, salvaged from a phantom Cowork session and re-applied cleanly). v1 surface complete and proven through Claude Desktop.
 
-1. **🔴 IMMEDIATE NEXT MOVE — USAspending federal contract awards (v2 queue item #3).** First bridge OUTSIDE the SEC vertical. Public REST API at `api.usaspending.gov`, no scraping, no auth flow, structured JSON responses. Genuinely should be ~1–1.5 hrs because there's no per-form schema discovery loop (recalibrated estimate captured as a Hard Lesson). Enables the political-alpha killer feature: "Senator buys LMT, defense contract awarded 48 hours later" — cross-source query joining `congressional_trades` to contract awards. Bottom-up customer funnel applies here — indie devs see this query and screenshot it on Twitter, that's how the hub gets discovered.
+1. **🔴 IMMEDIATE NEXT MOVE — 8-K material events scraper.** Last item on the v1 roadmap. Free-text item-code parsing — but the item codes themselves ARE the structured part (Item 1.01 material agreement, 2.01 acquisition, 5.02 exec departure, 7.01 Reg FD, 8.01 other). Index by item code on v1 and skip body extraction; that drops the estimate from "hardest of the v2 batch" to ~2–3 hrs (recalibrated post-13D/G — captured as a Hard Lesson). Highest-volume real-time disclosure stream.
 
-2. **bioguide_id catalog ingestion** (v2 queue item #4 — but worth slotting alongside USAspending since it's near-zero-effort and makes both the existing `get_congressional_trades` AND USAspending payouts dramatically richer). Spec at `C:\CapitalEdge\CONGRESS_DATA_PIPELINE.md`. Source: https://github.com/unitedstates/congress-legislators YAML. Once loaded, every senate/house trade record gets enriched with `party`, `state`, `state_district`, photos, **committee assignments** at query time. "Defense Committee member buys defense stock" needs committee data to filter. Unblocks `get_member_profile` MCP tool (the 6th v1 tool).
+2. **bioguide_id back-fill on the existing `congressional_trades` collection.** v0.8.0 ingested the bioguide catalog into the new `legislators` collection but did NOT touch the 581 already-saved congressional_trades records — those still have empty `bioguide_id` strings. One-shot enrichment script: walk `congressional_trades`, match `member_name` against `legislators.full_name` (case-insensitive substring or first+last+state tuple), set `bioguide_id`. Once done, agents can do `get_congressional_trades(ticker:'LMT')` → grab `bioguide_id` from each row → `get_member_profile(bioguide_id:'<id>')` for full member context (party + state + committee assignments). The political-alpha pattern is finally fully wired. Estimate: 30 min.
 
 3. **Lobbying disclosures (LDA) scraper.** Senate Office of Public Records. New portal, new auth flow. Estimated 4–5 hours. Adjacent to congressional trades — same buyer profile asks for both ("what's Pfizer paying lobbyists for AND which senators are trading their stock").
 
-4. **8-K material events scraper.** Free-text item-code parsing — but the item codes themselves ARE the structured part (Item 1.01 material agreement, 2.01 acquisition, 5.02 exec departure, 7.01 Reg FD, 8.01 other). Index by item code on v1 and skip body extraction; that drops the estimate from "hardest of the v2 batch" to ~2–3 hrs (recalibrated post-13D/G). Highest-volume real-time disclosure stream.
-
-5. **Polish pass on Senate parser output (v1.1, optional)**:
+4. **Polish pass on Senate parser output (v1.1, optional)**:
    - Whitespace cleanup in bond `asset_name` fields (current output has `\n\n\n` runs from how eFD renders bond descriptors).
    - Back-fill ticker from `asset_name` when source has it inline (e.g., "GOOGL - Alphabet Inc.", "MRSH - Marsh & McLennan...").
 
-6. **Polish pass on House parser output (v1.1, optional)** — captured Day 3 late evening:
+5. **Polish pass on House parser output (v1.1, optional)** — captured Day 3 late evening:
    - Strip markdown-link auto-formatting from asset names (`[Amazon.com](http://Amazon.com)` → `Amazon.com`).
    - Detect + dedup phantom partial rows where `asset_type` is the literal word `"Stock"` instead of `"ST"` (Cisneros JLL, Salazar Whirlpool, McCormick UnitedHealth pattern).
    - Detect + strip comment-overflow contamination where multi-line member-narrative bleeds into the next row's asset_name (Larsen "advisor explanation" pattern). Heuristic: asset_name > 200 chars or contains mid-sentence period.
 
-7. **Implement remaining v1 tool:** `get_member_profile` (the 6th tool — depends on bioguide catalog from item 2). `get_company_filings_summary` was on the original 5-tool plan but is effectively obsolete now that agents can compose `get_insider_transactions` + `get_institutional_holdings` + `get_planned_insider_sales` + `get_activist_stakes` in parallel for the same effect.
-
-8. **Known v1.1 deferrals:**
+6. **Known v1.1 deferrals:**
    - **Wrong-issuer OpenFIGI mappings**: AMBAC → OSG, BABAF (Alibaba OTC) instead of BABA (Alibaba NYSE ADR), etc. Needs issuer-name cross-validation (compare OpenFIGI's returned `name` against 13F's `nameOfIssuer`, reject mismatches).
    - **Pre-2023 13F market values 1000× too small**: SEC's old "thousands" instruction. Era-boundary handling needed.
    - **Senate "paper PTR" amendments**: ~0% of observed disclosures. Skip+log in place; full handling needs separate PDF path.
@@ -306,34 +309,39 @@ In rough priority order. Day 4 evening wrap: **5 of 5 v1 MCP tools live, server 
    - **Pre-2024 13D/G filings predate structured-XML mandate** — silently skipped. Acceptable for v1 since live feed is current-window.
    - **13D Item 4 narrative is HTML-only** — extract `purpose_summary` field in v1.1.
    - **Preferred / warrant ticker reverse lookup ambiguity** — OPFI-WT instead of OPFI, AGNCL instead of AGNC, etc. Captured as Hard Lesson.
+   - **Preferred-share / hyphenated-ticker ambiguity in `legislators` reverse lookups** — N/A here since the catalog is keyed by bioguide_id, but flagged as a near-miss when designing future cross-source enrichment.
 
-9. **Deploy v1.0 as a remote MCP server.** Cloud Run or Firebase Functions in the `capitaledge-api` project. Needs Blaze plan upgrade.
+7. **Deploy v1.0 as a remote MCP server.** Cloud Run or Firebase Functions in the `capitaledge-api` project. Needs Blaze plan upgrade.
 
-10. **Commercial: brand, domain, customer validation, pricing, marketing site.** Not engineering. Don't build deployment infrastructure ahead of customer interest. Bottom-up funnel strategy applies (see Hard Lessons).
+8. **Commercial: brand, domain, customer validation, pricing, marketing site.** Not engineering. Don't build deployment infrastructure ahead of customer interest. Bottom-up funnel strategy applies (see Hard Lessons).
 
-11. **Open architectural question (Greg flagged Day 3 late evening, parking for now):** should the dashboard at `C:\CapitalEdge` consume from the hub's Firestore directly (Option B) or keep the locked dual-scrape posture (Option A)? Data shapes are deliberately compatible — `congressional_trades`, `insider_trades`, `institutional_holdings` here match the dashboard's planned schema. Re-opening this depends on Derek's actual scraper-pipeline state and partnership-friction tolerance. Greg said "I will revisit the question." Don't decide for him.
+9. **Open architectural question (Greg flagged Day 3 late evening, parking for now):** should the dashboard at `C:\CapitalEdge` consume from the hub's Firestore directly (Option B) or keep the locked dual-scrape posture (Option A)? Data shapes are deliberately compatible — `congressional_trades`, `insider_trades`, `institutional_holdings` here match the dashboard's planned schema. Re-opening this depends on Derek's actual scraper-pipeline state and partnership-friction tolerance. Greg said "I will revisit the question." Don't decide for him.
 
 ## Files In This Project
 
-- `src/index.ts` — MCP server entry, stdio transport, dispatches list/call to the tool registry. Server version 0.6.1.
-- `src/tools/index.ts` — registry of registered tools (5 active: insider, institutional, congressional, planned-insider-sales, activist-stakes). v1 surface complete.
+- `src/index.ts` — MCP server entry, stdio transport, dispatches list/call to the tool registry. Server version 0.8.0.
+- `src/tools/index.ts` — registry of registered tools (7 active: insider, institutional, congressional, planned-insider-sales, activist-stakes, federal-contracts, member-profile). v1 surface complete.
 - `src/tools/insider-transactions.ts` — first MCP tool (definition + handler + input validation). Day 4: gained `include_baseline:boolean` param — when true, parallel-fetches matching Form 3 rows from `initial_ownership_baselines` and attaches them under a `baselines` field on the response envelope. Lets agents stitch Form 4 deltas + Form 3 starting positions in one round trip.
 - `src/tools/institutional-holdings.ts` — second MCP tool, exposes 13F holdings (Day 2)
 - `src/tools/congressional-trades.ts` — third MCP tool, exposes both Senate eFD PTRs and House Clerk PTRs (Day 3 afternoon + late evening). 581 records combined as of Day 3 wrap. Cross-chamber NVDA query proven through Claude Desktop.
 - `src/tools/planned-insider-sales.ts` — fourth MCP tool, exposes Form 144 planned-sale notices (Day 3 night). 90 records initial pull. Tool name `get_planned_insider_sales`. Forward-looking complement to `get_insider_transactions` (Form 4 = realized; 144 = intent).
 - `src/tools/activist-stakes.ts` — fifth MCP tool (Day 4 evening), exposes Schedule 13D/13G beneficial-ownership disclosures from `activist_ownership` collection. Tool name `get_activist_stakes`. Standalone (not a param extension on `get_institutional_holdings`) since 13D/G is event-triggered stake disclosure, structurally different from 13F portfolio snapshots. Filter surface: ticker, company_cik, cusip, filer_name, filer_cik, is_activist, filing_type, min_percent_of_class, since/until, sort_by (filing_date | event_date | percent_of_class | shares_owned). `is_activist=true` filters out the 13G institutional firehose (Vanguard/BlackRock dominate volume) to surface activist takeover-style filings.
+- `src/tools/federal-contracts.ts` — sixth MCP tool (Day 4 night), exposes USAspending federal contract awards from `federal_contracts` collection. Tool name `get_federal_contracts`. First non-SEC tool — the bridge to the political-alpha cross-source pattern (join `congressional_trades` to contract awards by recipient_name + timing). Filter surface: recipient_name (substring), recipient_uei, awarding_agency, naics_code, psc_code, min_amount, since/until, sort_by (last_modified_date | start_date | award_amount | total_outlays).
+- `src/tools/member-profile.ts` — seventh MCP tool (Day 5 morning), exposes the unitedstates/congress-legislators catalog from the `legislators` collection. Tool name `get_member_profile`. Filter surface: bioguide_id (direct doc lookup, fastest), member_name (substring), state, chamber, party, committee_id (Thomas code, exact match against any committee_assignments[].committee_id). Closes the political-alpha loop — every congressional_trades record's bioguide_id resolves to full party/state/chamber/district + ALL committee assignments. Tool description teaches Thomas committee-code conventions (HSAS, SSAF, HSAG15) inline so agents can compose the queries cold.
 - `src/scrapers/form3.ts` — Node/TS port of the Form 3 scraper (Day 4 morning, ~440 lines). Third use of the SEC-XML template after Form 4 and Form 144 — fastest port yet. `ownershipDocument` root with `nonDerivativeHolding` / `derivativeHolding` tables (Form 4 has `...Transaction` instead). One row per security class; multi-owner OR-handling; `parseTagValue:false` to protect numeric-looking strings; `rawXmlPath()` to strip the `xsl<schema>/` prefix from primaryDocument; `normalizeTicker()` for exchange-prefixed symbols (`NYSE/TRN` → `TRN`); `sanitizeForDocId()` for Firestore doc-ID safety.
 - `src/scrapers/form4.ts` — Node/TS port of the Form 4 scraper
 - `src/scrapers/13f.ts` — Node/TS port of the 13F scraper with sub-account aggregation, top-50 filter, position-change calc, closed-position synthesis (Day 2)
 - `src/scrapers/senate.ts` — Node/TS port of the Senate eFD PTR scraper (Day 3 afternoon). Full session protocol with CSRF rotation, Origin header for Django 4 compatibility, multipart FormData on the data POST, paper-PTR detector. ~470 lines.
 - `src/scrapers/house.ts` — Node/TS port of the House Clerk PTR scraper (Day 3 late evening). Two-stage pipeline: yearly XML index from `disclosures-clerk.house.gov` → per-PTR PDF text extraction via lazy-loaded `pdf-parse` → heuristic line-walker with TX_SIG_RE anchor regex for trade rows. Owner-code regex `^(SP|JT|DC)\S` handles all observed punctuation/case mixes (SPiShares, DCBJ, JTT., JTO', etc.). Programmatic control-char regex via `String.fromCharCode` (workaround for tool-induced byte injection). ~470 lines.
 - `src/scrapers/form144.ts` — Node/TS port of the Form 144 scraper (Day 3 night). Same EDGAR submissions-API + full-text-search plumbing as Form 4. Real schema is wildly different from Form 4 (no ticker, MM/DD/YYYY dates, insider-name-in-issuerInfo, mis-named `securitiesToBeSold` element holding acquisition history not sale data) — captured as Hard Lessons. Loads ticker cache bidirectionally (ticker→cik AND cik→ticker) since Form 144 only includes CIK. Captures the 10b5-1 plan adoption date as a discretionary-vs-scheduled-sale signal. Strips `xsl<schema>/` URL prefix to reach raw XML rather than XSL-rendered HTML. ~370 lines.
+- `src/scrapers/bioguide.ts` — pure YAML ingestion (Day 5 morning, ~280 lines) of `legislators-current.yaml` + `committees-current.yaml` + `committee-membership-current.yaml` from `unitedstates/congress-legislators`. Three parallel `fetchYaml` calls, joined into one `Legislator` record per current member with all committee + subcommittee assignments flattened into `committee_assignments[]`. Subcommittee codes formed by appending the subcommittee's `thomas_id` to the parent committee's `thomas_id` (e.g., `HSAG` + `15` = `HSAG15`). ~5 seconds end-to-end; idempotent re-runs. No HTTP discovery loop, no schema surprises — calibration-confirmed clean-API ingestion at <1.5 hrs.
+- `src/scrapers/usaspending.ts` — USAspending federal contract awards scraper (Day 4 night). Public REST API at `api.usaspending.gov/api/v2/search/spending_by_award/`, no auth, structured JSON. First non-SEC scraper. Uses POST with award_type_codes filter, recipient_name substring, time period bounds. Idempotent doc IDs (USAspending's `generated_internal_id`, stable across modifications).
 - `src/scrapers/activist.ts` — Node/TS port of the Schedule 13D/13G scraper (Day 4 evening, ~480 lines). Fourth use of the SEC-XML template. Handles SCHEDULE 13D, SCHEDULE 13D/A, SCHEDULE 13G, SCHEDULE 13G/A. **Dual-schema branching parser** — 13D and 13G use STRUCTURALLY DIFFERENT XML schemas (different namespaces, field paths, field names) — captured as Hard Lessons. `parseActivistXml` discriminates on `submissionType` and routes to `parseSchedule13D` or `parseSchedule13G`, each handling its own schema, both populating the shared `ActivistOwnership` output type. EDGAR FTS form code is `SCHEDULE 13D` not `SC 13D` (gotcha captured as Hard Lesson). `issuerInfo` nested under `coverPageHeader` not `formData` direct. `headerData` is a sibling of `formData`. CUSIPs at `issuerCusips.issuerCusipNumber` (plural, nested) for both branches. Multi-filer joint disclosures handled. Reuses `rawXmlPath()`, `normalizeTicker()`, `sanitizeForDocId()`, multi-owner OR-handling, CIK reverse-lookup from earlier scrapers.
 - `src/openfigi.ts` — OpenFIGI CUSIP→ticker enrichment with US-exchange preference, Firestore write-through cache, EDGAR-catalog cross-validation in `pickBestMatch`, single-char allowlist, USD-suffix rejection, and `searchOpenFigiByName` for the tertiary search-by-name fallback (Day 3)
 - `src/sec-tickers.ts` — EDGAR `company_tickers_exchange.json` (Day 3 — switched from `company_tickers.json`) name fallback for CINS-coded foreign-domiciled CUSIPs and ticker-validation oracle. Exports `lookupTickerByName`, `isKnownUSTicker`, `searchEdgar`, `dumpEdgar`, `normalizeName`. Contains aggressive abbreviation-expansion table and jurisdiction-suffix stripping.
-- `src/scrape.ts` — CLI runner for scrapers (`ping`, `13d-13g`, `13d-13g-feed`, `form3`, `form3-feed`, `form4`, `form4-feed`, `form144`, `form144-feed`, `13f`, `13f-feed`, `funds`, `senate`, `senate-ptr`, `house`, `house-index`, `house-text`, plus Day 3 diagnostics: `test-normalize`, `search-edgar`, `dump-edgar`, `flush-cusip-cache`)
-- `src/firestore.ts` — data layer with auto-detected stub vs live mode; `saveInsiderTransactions`, `saveInstitutionalHoldings`, `saveCongressionalTrades`, `saveForm144Filings`, `saveForm3Holdings`, `saveActivistOwnership`, `queryInsiderTransactions`, `queryInstitutionalHoldings`, `queryCongressionalTrades`, `queryForm144Filings`, `queryForm3Holdings`, `queryActivistOwnership`, `pingFirestore`, `getLiveDb`, `getDbIfLive`
-- `src/types.ts` — shared types (`ResultEnvelope`, `InsiderTransaction`, `InstitutionalHolding`, `CongressionalTrade`, `Form144Filing`, `Form3Holding`, `InsiderTransactionsEnvelope`, `ActivistOwnership`, `ActivistOwnershipQuery`, etc.)
+- `src/scrape.ts` — CLI runner for scrapers (`ping`, `bioguide`, `usaspending`, `usaspending-feed`, `13d-13g`, `13d-13g-feed`, `form3`, `form3-feed`, `form4`, `form4-feed`, `form144`, `form144-feed`, `13f`, `13f-feed`, `funds`, `senate`, `senate-ptr`, `house`, `house-index`, `house-text`, plus Day 3 diagnostics: `test-normalize`, `search-edgar`, `dump-edgar`, `flush-cusip-cache`)
+- `src/firestore.ts` — data layer with auto-detected stub vs live mode; `saveInsiderTransactions`, `saveInstitutionalHoldings`, `saveCongressionalTrades`, `saveForm144Filings`, `saveForm3Holdings`, `saveActivistOwnership`, `saveFederalContractAwards`, `saveLegislators`, `queryInsiderTransactions`, `queryInstitutionalHoldings`, `queryCongressionalTrades`, `queryForm144Filings`, `queryForm3Holdings`, `queryActivistOwnership`, `queryFederalContractAwards`, `queryLegislators`, `pingFirestore`, `getLiveDb`, `getDbIfLive`
+- `src/types.ts` — shared types (`ResultEnvelope`, `InsiderTransaction`, `InstitutionalHolding`, `CongressionalTrade`, `Form144Filing`, `Form3Holding`, `InsiderTransactionsEnvelope`, `ActivistOwnership`, `ActivistOwnershipQuery`, `FederalContractAward`, `FederalContractAwardsQuery`, `Legislator`, `CommitteeAssignment`, `LegislatorQuery`, etc.)
 - `package.json` — dependencies and scripts
 - `tsconfig.json` — TypeScript config (strict mode, ES2022, NodeNext)
 - `firebase.json` — Firebase CLI config (Day 3 evening). Currently just points to `firestore.indexes.json`. Will gain `rules` and `hosting` sections when those land.
@@ -404,53 +412,58 @@ Greg's keyboard test sequence (anytime you want to verify everything still works
 
 ```
 cd C:\CapitalEdge-API
-npx tsx src/scrape.ts ping                       # confirms credentials
-npx tsx src/scrape.ts 13d-13g RDW                # 13D/13G stakes filed against Redwire
-npx tsx src/scrape.ts 13d-13g-feed 7 --save      # 7-day 13D/13G across all issuers, saves
-npx tsx src/scrape.ts form3 AAPL                 # AAPL initial-ownership baselines (Form 3)
-npx tsx src/scrape.ts form3-feed 7 --save        # 7-day Form 3 across all companies, saves
-npx tsx src/scrape.ts form4 AAPL                 # hits SEC, prints AAPL trades
-npx tsx src/scrape.ts form4-feed 1 --save        # 1-day live feed, saves to Firestore
-npx tsx src/scrape.ts form144 AAPL               # AAPL planned-sale notices
-npx tsx src/scrape.ts form144-feed 7 --save      # 7-day Form 144 across all companies, saves
-npx tsx src/scrape.ts senate 7 --save            # 7-day Senate PTRs, saves
-npx tsx src/scrape.ts house 7 --extract --save   # 7-day House PTRs, saves
-npm run dev                                       # boots MCP server in LIVE MODE
+npx tsx src/scrape.ts ping                              # confirms credentials
+npx tsx src/scrape.ts bioguide --save                   # ingest 536 legislators (~5 sec)
+npx tsx src/scrape.ts usaspending "Lockheed Martin" 30  # 30-day LMT contract awards
+npx tsx src/scrape.ts usaspending-feed 7 --save         # 7-day all-recipient feed, saves
+npx tsx src/scrape.ts 13d-13g RDW                       # 13D/13G stakes filed against Redwire
+npx tsx src/scrape.ts 13d-13g-feed 7 --save             # 7-day 13D/13G across all issuers, saves
+npx tsx src/scrape.ts form3 AAPL                        # AAPL initial-ownership baselines (Form 3)
+npx tsx src/scrape.ts form3-feed 7 --save               # 7-day Form 3 across all companies, saves
+npx tsx src/scrape.ts form4 AAPL                        # hits SEC, prints AAPL trades
+npx tsx src/scrape.ts form4-feed 1 --save               # 1-day live feed, saves to Firestore
+npx tsx src/scrape.ts form144 AAPL                      # AAPL planned-sale notices
+npx tsx src/scrape.ts form144-feed 7 --save             # 7-day Form 144 across all companies, saves
+npx tsx src/scrape.ts senate 7 --save                   # 7-day Senate PTRs, saves
+npx tsx src/scrape.ts house 7 --extract --save          # 7-day House PTRs, saves
+npm run dev                                              # boots MCP server in LIVE MODE
 ```
 
 ## Last Updated
 
-May 1, 2026 — Day 4 evening. **v1 MCP tool surface complete (5 of 5 tools live). Server v0.6.1.** Code pushed (commits `5f8f9dd` v0.5.0 → v0.6.0 → `79b3aa2` v0.6.1); Firestore indexes deployed.
+May 2, 2026 — Day 5 morning. **All 7 planned MCP tools live. Server v0.8.0.** Code pushed; Firestore indexes deployed; the v1 tool surface is officially complete.
+
+Day 4 night→Day 5 morning shipped:
+- **v0.7.0 (commit `d9ff966`) — USAspending federal contract awards** + `get_federal_contracts` MCP tool. First bridge outside the SEC vertical. Clean-API ingestion at <1.5 hrs (calibration-confirmed).
+- **v0.8.0 (this commit) — bioguide ingestion** + `get_member_profile` MCP tool. **Salvaged from a phantom Cowork session** (a previous session reported v0.8.0 done; `git log` showed v0.7.0; the in-memory file contents were quarantined to `v0.8.0-salvage/` with `SALVAGE_NOTES.md` so a fresh Claude Code session could pick up cold from disk + the notes — captured as a Hard Lesson). 536 current legislators ingested (49 committees, 230 membership groups, average 7.2 committee assignments per member). `C001098 → C001035` mis-attribution (Cruz vs Collins) corrected in three locations.
 
 State at session wrap:
 - 76 Form 4 insider trades (`insider_trades`)
 - 42+ Berkshire 13F holdings (`institutional_holdings`)
-- 241 Senate + 340 House = 581 congressional trades (`congressional_trades`)
+- 241 Senate + 340 House = 581 congressional trades (`congressional_trades`) — bioguide_id back-fill is the one remaining v1 enrichment task
 - 90 Form 144 planned-sale notices (`planned_insider_sales`)
-- 98 Form 3 initial-ownership rows (`initial_ownership_baselines`) — Day 4 morning
-- 165+ Schedule 13D/13G activist & passive 5%+ ownership rows (`activist_ownership`) ← new Day 4 evening
+- 98 Form 3 initial-ownership rows (`initial_ownership_baselines`)
+- 165+ Schedule 13D/13G activist & passive 5%+ ownership rows (`activist_ownership`)
+- USAspending federal contract awards (`federal_contracts`) — Day 4 night ingestion
+- **536 current legislators (`legislators`)** — Day 5 morning ingestion ← new
 
-**Five MCP tools registered and serving:** `get_insider_transactions` (with `include_baseline`), `get_institutional_holdings`, `get_congressional_trades`, `get_planned_insider_sales`, `get_activist_stakes`. v1 surface complete. The 6th (`get_member_profile`) is unblocked technically but pending bioguide catalog ingestion.
+**Seven MCP tools registered and serving:**
+1. `get_insider_transactions` (with `include_baseline`)
+2. `get_institutional_holdings`
+3. `get_congressional_trades`
+4. `get_planned_insider_sales`
+5. `get_activist_stakes`
+6. `get_federal_contracts` ← new Day 4 night
+7. `get_member_profile` ← new Day 5 morning
 
-**Day 4 evening — 13D/13G shipped end-to-end through MCP** (~2.5 hrs total including discovery + 5 bug-fix iterations). Top concentrated activist stakes the tool surfaced on smoke-test:
-- **Steven Tananbaum 81.7%** of GoldenTree Opportunistic Credit Fund (founder controls his own fund) + GoldenTree Asset Management 74.9%
-- **Barry Foundation 79.7%** of Prospect Floating Rate Fund
-- **Petros Panagiotidis 72.2%** of TORO Corp (Greek shipping insider)
-- **Franklin BSP 87.6%** of Franklin BSP Lending Fund (parent-sub)
-- **DoubleU Games 67.1%** of DoubleDown Interactive (Korean parent-sub)
-- **Todd Schwartz 32.03%** of OppFi via 5-entity TGS Capital + revocable trust + OppFi Shares LLC
-- **AE Industrial Partners 9-reporter 13D/A on Redwire (RDW)** — Greene + Rowe at 8.3% via shared dispositive through the fund family
-- **BlackRock by concentration**: 16.3% Enphase (ENPH), 15% Northwest Natural (NWN), 13.8% LKQ Corp, 11.6% Payoneer (PAYO)
+**v2 queue progress:** House ✓ → Form 144 ✓ → Form 3 ✓ → 13D/G ✓ → USAspending ✓ → bioguide ✓ → **Lobbying / 8-K remaining**.
 
-**Day 4 morning — Form 3 baselines + `include_baseline` extension** also shipped, also smoke-tested through MCP. 38 Apple Form 3 baselines stitched alongside Form 4 trades in one query (Khan COO 1M, Parekh CFO RSU stack, Apple director onboarding history back to 2015).
+**Strategic clarity locked Day 3 that still holds:** stay vertical (no medical/legal/sports — depth in US public disclosures only). Customer funnel stays bottom-up (free → indie devs → small fintechs → midsize → institutional, not the reverse). Pure-publisher posture (no derived intelligence in tool outputs, ever).
 
-**Strategic clarity locked Day 3 that still holds:** stay vertical (no medical/legal/sports — depth in US public disclosures only). v2 queue: **House ✓ → Form 144 ✓ → Form 3 ✓ → 13D/G ✓ → USAspending → bioguide → Lobbying → 8-K** in roughly that order. Customer funnel stays bottom-up (free → indie devs → small fintechs → midsize → institutional, not the reverse).
-
-**Hard Lesson on scraper-time estimates** (recalibrated Day 4 evening, captured up top): SEC-XML scraper template reuse saves ~30 min of plumbing per new form, but each form has its own schema discovery + bug-fix iteration that takes 1.5–2.5 hrs. **Budget 2–3 hrs per new SEC-XML scraper, not "fastest port yet" optimism.** USAspending and other clean-API sources should genuinely be 1–1.5 hrs because they have no per-form schema to discover.
+**Calibration confirmed Day 5:** clean-API ingestion (USAspending, bioguide) really is 1–1.5 hrs. SEC-XML form scrapers (Form 4 / 144 / 3 / 13D/G) really are 2–3 hrs because each has its own schema discovery + bug-fix iteration. The API-vs-XML distinction is the single best predictor of build time — captured as a Hard Lesson.
 
 **Immediate next move on session resume:**
-1. **USAspending federal contract awards** (v2 queue item #3, recalibrated #1 priority). First bridge OUTSIDE the SEC vertical. Public REST API at `api.usaspending.gov`, no scraping, no auth. Genuinely should be 1–1.5 hrs. Enables the political-alpha killer feature: "Senator buys LMT, defense contract awarded 48 hours later" — joining `congressional_trades` to contract awards.
-2. **bioguide_id catalog ingestion** alongside USAspending (near-zero effort, makes both `get_congressional_trades` and USAspending payouts dramatically richer with party/state/district/committee assignments). Unblocks `get_member_profile` MCP tool.
-3. After USAspending + bioguide: **8-K material events** (recalibrated to ~2–3 hrs by indexing on item codes only on v1, skipping body extraction).
+1. **8-K material events scraper.** Last item on the v1 roadmap. Index by item code only on v1 (skip body extraction). ~2–3 hrs.
+2. **bioguide_id back-fill on existing `congressional_trades` records.** One-shot enrichment script: walk the 581 records, match `member_name` against the new `legislators.full_name`, set `bioguide_id`. Once done, the political-alpha cross-source pattern (`get_congressional_trades(ticker:'LMT')` → grab `bioguide_id` → `get_member_profile(bioguide_id:'<id>')` → committee context → `get_federal_contracts(recipient_name:'Lockheed Martin')`) is fully wired. ~30 min.
 
-**Open architectural question (parking, not deciding):** Greg flagged the dashboard-vs-hub data sourcing question late Day 3 — should `C:\CapitalEdge` consume from the hub's Firestore directly (Option B) or keep the locked dual-scrape posture (Option A)? Field shapes are deliberately compatible. Deferred until Greg revisits. See item 11 in "What's Open / Next Up" for the full framing.
+**Open architectural question (parking, not deciding):** Greg flagged the dashboard-vs-hub data sourcing question late Day 3 — should `C:\CapitalEdge` consume from the hub's Firestore directly (Option B) or keep the locked dual-scrape posture (Option A)? Field shapes are deliberately compatible. Deferred until Greg revisits. See item 9 in "What's Open / Next Up" for the full framing.
