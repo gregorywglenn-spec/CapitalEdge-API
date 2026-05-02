@@ -226,6 +226,46 @@
         { "fieldPath": "item_codes", "arrayConfig": "CONTAINS" },
         { "fieldPath": "filing_date", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "lobbying_filings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "filing_year", "order": "ASCENDING" },
+        { "fieldPath": "dt_posted", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "lobbying_filings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "filing_period", "order": "ASCENDING" },
+        { "fieldPath": "dt_posted", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "lobbying_filings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "general_issue_codes", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "dt_posted", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "lobbying_filings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "filing_year", "order": "ASCENDING" },
+        { "fieldPath": "income", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "lobbying_filings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "general_issue_codes", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "income", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

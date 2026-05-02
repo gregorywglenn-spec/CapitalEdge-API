@@ -34,6 +34,8 @@ import type {
   InstitutionalHoldingsQuery,
   Legislator,
   LegislatorQuery,
+  LobbyingFiling,
+  LobbyingFilingsQuery,
   MaterialEvent,
   MaterialEventsQuery,
 } from "./types.js";
@@ -770,6 +772,115 @@ export async function saveFederalContractAwards(
     saved += chunk.length;
   }
 
+  return { saved, collection: COLLECTION };
+}
+
+// ─── Lobbying filings (LDA) query ─────────────────────────────────────────
+
+export async function queryLobbyingFilings(
+  query: LobbyingFilingsQuery,
+): Promise<QueryResult<LobbyingFiling>> {
+  if (isStubMode()) {
+    return { results: [], has_more: false };
+  }
+
+  const db = await getLiveDb();
+  let q: FirestoreQuery = db.collection("lobbying_filings");
+
+  if (query.filing_year !== undefined) {
+    q = q.where("filing_year", "==", query.filing_year);
+  }
+  if (query.filing_period) {
+    q = q.where("filing_period", "==", query.filing_period);
+  }
+  if (query.min_income !== undefined) {
+    q = q.where("income", ">=", query.min_income);
+  }
+  // OR-semantic match across general_issue_codes (max 30 codes per Firestore).
+  if (query.general_issue_codes && query.general_issue_codes.length > 0) {
+    q = q.where(
+      "general_issue_codes",
+      "array-contains-any",
+      query.general_issue_codes.slice(0, 30),
+    );
+  }
+
+  const sortField = query.sort_by ?? "dt_posted";
+  const sortOrder = query.sort_order ?? "desc";
+
+  if (query.since) q = q.where(sortField, ">=", query.since);
+  if (query.until) q = q.where(sortField, "<=", query.until);
+
+  q = q.orderBy(sortField, sortOrder);
+
+  const userLimit = query.limit ?? 50;
+
+  // Substring filters (registrant_name, client_name, government_entity) need
+  // a wider Firestore window so the post-fetch filter sees the full universe.
+  // 5000 ceiling matches other collections.
+  const needsClientSideFilter =
+    query.registrant_name || query.client_name || query.government_entity;
+  const fetchLimit = needsClientSideFilter ? 5000 : userLimit + 1;
+  q = q.limit(fetchLimit);
+
+  const snap = await q.get();
+  let docs = snap.docs.map((d) => d.data() as LobbyingFiling);
+
+  if (query.registrant_name) {
+    const needle = query.registrant_name.toLowerCase();
+    docs = docs.filter((f) =>
+      (f.registrant_name ?? "").toLowerCase().includes(needle),
+    );
+  }
+  if (query.client_name) {
+    const needle = query.client_name.toLowerCase();
+    docs = docs.filter((f) =>
+      (f.client_name ?? "").toLowerCase().includes(needle),
+    );
+  }
+  if (query.government_entity) {
+    const needle = query.government_entity.toLowerCase();
+    docs = docs.filter((f) =>
+      (f.government_entities ?? []).some((g) =>
+        g.toLowerCase().includes(needle),
+      ),
+    );
+  }
+
+  const has_more = docs.length > userLimit;
+  const results = docs.slice(0, userLimit);
+  return { results, has_more };
+}
+
+/**
+ * Save scraped LDA filings to Firestore. Idempotent — re-running uses the
+ * same doc IDs (filing_uuid) with merge:true semantics.
+ */
+export async function saveLobbyingFilings(
+  filings: LobbyingFiling[],
+): Promise<{ saved: number; collection: string }> {
+  if (isStubMode()) {
+    throw new Error(
+      "Cannot save to Firestore in stub mode (no service account at secrets/service-account.json)",
+    );
+  }
+  const COLLECTION = "lobbying_filings";
+  if (filings.length === 0) {
+    return { saved: 0, collection: COLLECTION };
+  }
+  const db = await getLiveDb();
+  const collection = db.collection(COLLECTION);
+  const BATCH_SIZE = 400;
+  let saved = 0;
+  for (let i = 0; i < filings.length; i += BATCH_SIZE) {
+    const batch = db.batch();
+    const chunk = filings.slice(i, i + BATCH_SIZE);
+    for (const filing of chunk) {
+      batch.set(collection.doc(filing.id), filing, { merge: true });
+    }
+    await batch.commit();
+    saved += chunk.length;
+  }
   return { saved, collection: COLLECTION };
 }
 

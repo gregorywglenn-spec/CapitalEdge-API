@@ -14,6 +14,14 @@
  *                                                the legislators collection
  *   tsx src/scrape.ts 8k <TICKER> [--save]       Recent Form 8-K material events for one ticker
  *   tsx src/scrape.ts 8k-feed [days] [--save]    Form 8-K filings across all companies, last N days
+ *   tsx src/scrape.ts lobbying-registrant <NAME> [--save]
+ *                                                LDA filings by registrant (lobbying firm) name
+ *   tsx src/scrape.ts lobbying-client <NAME> [--save]
+ *                                                LDA filings by client (paying entity) name
+ *   tsx src/scrape.ts lobbying-feed <YEAR> <PERIOD> [--save] [--max=N]
+ *                                                Bulk LDA filings for a (year, period); period =
+ *                                                first_quarter | second_quarter | third_quarter |
+ *                                                fourth_quarter | mid_year | year_end
  *   tsx src/scrape.ts usaspending <RECIPIENT> [days]
  *                                                Federal contract awards for one recipient (default 365 days)
  *   tsx src/scrape.ts usaspending-feed [days] --save
@@ -69,10 +77,16 @@ import {
   saveInsiderTransactions,
   saveInstitutionalHoldings,
   saveLegislators,
+  saveLobbyingFilings,
   saveMaterialEvents,
 } from "./firestore.js";
 import { scrapeBioguideCatalog } from "./scrapers/bioguide.js";
 import { scrape8kByTicker, scrape8kLiveFeed } from "./scrapers/form8k.js";
+import {
+  scrapeLobbyingByClient,
+  scrapeLobbyingByPeriod,
+  scrapeLobbyingByRegistrant,
+} from "./scrapers/lobbying.js";
 import { scrapeForm4ByTicker, scrapeForm4LiveFeed } from "./scrapers/form4.js";
 import {
   scrapeForm144ByTicker,
@@ -203,6 +217,86 @@ const COMMANDS: Record<string, CliCommand> = {
         );
       }
       return events;
+    },
+  },
+  "lobbying-registrant": {
+    description:
+      "Scrape LDA filings by registrant (lobbying firm) name (substring match; add --save to write to Firestore). Returns every filing the firm has submitted, with client + issues + government entities + lobbyist names.",
+    run: async (args) => {
+      const positional = args.filter((a) => !a.startsWith("--"));
+      const name = positional[0];
+      if (!name) {
+        throw new Error(
+          "Usage: tsx src/scrape.ts lobbying-registrant <NAME> [--save]",
+        );
+      }
+      const filings = await scrapeLobbyingByRegistrant(name);
+      if (hasSaveFlag(args)) {
+        console.error(
+          `[save] Writing ${filings.length} lobbying filings to Firestore...`,
+        );
+        const result = await saveLobbyingFilings(filings);
+        console.error(
+          `[save] Saved ${result.saved} filings to ${result.collection}`,
+        );
+      }
+      return filings;
+    },
+  },
+  "lobbying-client": {
+    description:
+      "Scrape LDA filings by client (paying entity) name (substring match; add --save to write to Firestore). Use to ask 'what is Pfizer paying lobbyists for' or 'which firms work for Lockheed Martin'.",
+    run: async (args) => {
+      const positional = args.filter((a) => !a.startsWith("--"));
+      const name = positional[0];
+      if (!name) {
+        throw new Error(
+          "Usage: tsx src/scrape.ts lobbying-client <NAME> [--save]",
+        );
+      }
+      const filings = await scrapeLobbyingByClient(name);
+      if (hasSaveFlag(args)) {
+        console.error(
+          `[save] Writing ${filings.length} lobbying filings to Firestore...`,
+        );
+        const result = await saveLobbyingFilings(filings);
+        console.error(
+          `[save] Saved ${result.saved} filings to ${result.collection}`,
+        );
+      }
+      return filings;
+    },
+  },
+  "lobbying-feed": {
+    description:
+      "Bulk-scrape every LDA filing for a (year, period). Period = first_quarter | second_quarter | third_quarter | fourth_quarter | mid_year | year_end. Default cap 1000 filings; pass --max=N to override. Add --save to write to Firestore.",
+    run: async (args) => {
+      const positional = args.filter((a) => !a.startsWith("--"));
+      const year = positional[0] ? parseInt(positional[0], 10) : NaN;
+      const period = positional[1];
+      if (Number.isNaN(year) || year < 1999 || year > 2100 || !period) {
+        throw new Error(
+          "Usage: tsx src/scrape.ts lobbying-feed <YEAR> <PERIOD> [--save] [--max=N]",
+        );
+      }
+      const maxFlag = args.find((a) => a.startsWith("--max="));
+      const maxRecords = maxFlag
+        ? parseInt(maxFlag.slice("--max=".length), 10)
+        : 1000;
+      if (Number.isNaN(maxRecords) || maxRecords < 1) {
+        throw new Error("--max=N must be a positive integer");
+      }
+      const filings = await scrapeLobbyingByPeriod(year, period, maxRecords);
+      if (hasSaveFlag(args)) {
+        console.error(
+          `[save] Writing ${filings.length} lobbying filings to Firestore...`,
+        );
+        const result = await saveLobbyingFilings(filings);
+        console.error(
+          `[save] Saved ${result.saved} filings to ${result.collection}`,
+        );
+      }
+      return filings;
     },
   },
   usaspending: {

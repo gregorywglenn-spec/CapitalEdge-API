@@ -252,6 +252,123 @@ export interface MaterialEventsQuery {
   limit?: number;
 }
 
+// ─── Lobbying disclosures (LDA, Senate Office of Public Records) ─────────
+
+/**
+ * One "lobbying activity" inside a single LDA filing. A filing typically
+ * lists 1-30 of these — each one represents a distinct issue area that
+ * the registrant lobbied on for the client during the reporting quarter.
+ *
+ * `description` is free-text and can run very long (we've seen 30KB+
+ * sovereign-citizen manifestos in real data). Truncated at 5000 chars
+ * during ingestion to stay well under Firestore's 1MB doc-size cap;
+ * agents can fetch the full filing via the parent's `filing_document_url`
+ * if they need the prose past the truncation point.
+ */
+export interface LobbyingActivity {
+  /** 3-char issue area code: "DEF", "HEA", "TRA", "ENV", "FIN", etc. */
+  general_issue_code: string;
+  general_issue_code_display: string;
+  /** Free-text issue description. Truncated at 5000 chars during ingestion. */
+  description: string;
+  description_truncated: boolean;
+  /** Free-text on foreign-entity involvement (rare). */
+  foreign_entity_issues: string;
+  /** Names of lobbyists who worked on this issue (e.g., "John Q Smith"). */
+  lobbyist_names: string[];
+  /** Government bodies contacted (e.g., "SENATE", "HOUSE OF REPRESENTATIVES", "Treasury, Dept of"). */
+  government_entities: string[];
+}
+
+/**
+ * One LDA filing — quarterly LD-2 report (registrants reporting lobbying
+ * activity for clients), or related LD-1 registrations / amendments.
+ *
+ * Source: Senate Office of Public Records via the LDA REST API. Both
+ * `lda.gov` and `lda.senate.gov` proxy the same backend; we point at
+ * `lda.gov` since the senate.gov URL retires June 30, 2026.
+ *
+ * The `lobbying_activities` array is the political-money gold — issues
+ * worked on, lobbyists involved, and government entities contacted. The
+ * top-level `general_issue_codes`, `government_entities`, and
+ * `lobbyist_names` fields are flattened summaries of the array so
+ * Firestore can index them directly (`array-contains-any` queries).
+ *
+ * Pure-publisher posture per TOOL_DESIGN.md — no derived signals, just
+ * normalized facts from LDA. Public record by statute (LDA § 1605).
+ */
+export interface LobbyingFiling {
+  /** filing_uuid from LDA — globally unique, stable across edits. */
+  id: string;
+  filing_uuid: string;
+  /** "Q1" | "Q2" | "Q3" | "Q4" | "MA" | "MA-A" | "RR" | "RA" | etc. */
+  filing_type: string;
+  filing_type_display: string;
+  /** Calendar year of the reporting period (NOT the filing date). */
+  filing_year: number;
+  /** "first_quarter" | "second_quarter" | "third_quarter" | "fourth_quarter" | "mid_year" | "year_end". */
+  filing_period: string;
+  filing_period_display: string;
+  /** Public link to the human-readable filing document (HTML or PDF). */
+  filing_document_url: string;
+  /** Reported income (USD) the registrant earned from this client this period. Null on registrations. */
+  income: number | null;
+  /** Reported expenses (USD) — alternative to income for in-house lobbyists. Null when income is reported. */
+  expenses: number | null;
+  /** When the filing was submitted to the SOPR (NOT the activity period). ISO 8601. */
+  dt_posted: string;
+  /** Termination date if the registrant ended the engagement. ISO date or empty. */
+  termination_date: string;
+
+  // Registrant — the lobbying firm filing the report.
+  registrant_id: number;
+  registrant_name: string;
+  registrant_state: string;
+  registrant_country: string;
+
+  // Client — the entity paying the registrant.
+  client_id: number;
+  client_name: string;
+  client_description: string;
+  client_state: string;
+  client_country: string;
+  /** True when the client is a US state, federal agency, or other government body. */
+  client_is_government: boolean;
+
+  // Flattened summaries (top-level) for indexed Firestore queries.
+  /** All unique general_issue_code values across this filing's activities. */
+  general_issue_codes: string[];
+  /** All unique government_entity names across this filing's activities. */
+  government_entities: string[];
+  /** All unique lobbyist names ("First Last") across this filing's activities. */
+  lobbyist_names: string[];
+
+  /** The full nested array — agents who want activity-level granularity. */
+  lobbying_activities: LobbyingActivity[];
+
+  data_source: "SENATE_LDA";
+}
+
+/**
+ * Validated query parameters for the get_lobbying_filings MCP tool.
+ */
+export interface LobbyingFilingsQuery {
+  registrant_name?: string;
+  client_name?: string;
+  filing_year?: number;
+  filing_period?: string;
+  /** OR semantics — match any filing whose codes include at least one of these. Max 30. */
+  general_issue_codes?: string[];
+  /** Substring match against the flattened `government_entities` array. */
+  government_entity?: string;
+  min_income?: number;
+  since?: string;
+  until?: string;
+  sort_by?: "dt_posted" | "filing_year" | "income";
+  sort_order?: "desc" | "asc";
+  limit?: number;
+}
+
 // ─── Legislators (unitedstates/congress-legislators catalog) ──────────────
 
 /**
