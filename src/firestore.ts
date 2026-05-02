@@ -773,6 +773,235 @@ export async function saveFederalContractAwards(
   return { saved, collection: COLLECTION };
 }
 
+// ─── Cross-source enrichment: bioguide_id back-fill ───────────────────────
+
+/**
+ * Walk every congressional_trades record and write the matching bioguide_id
+ * back into the row, joining against the legislators collection.
+ *
+ * Three-tier matcher to handle messy upstream data:
+ *   1. Primary: (chamber, state.upper, last_name.lower) — the clean key.
+ *   2. Senate-only fallback: (senate, last_name) when state is empty.
+ *      The Senate scraper sometimes drops state; this rescues those rows.
+ *      Only fires when exactly one senator has that last name.
+ *   3. Multi-word last-name fallback: when a single trade-side surname is
+ *      a suffix of a legislator's full last_name (e.g., trade "Delaney"
+ *      vs YAML "McClain Delaney"). Same uniqueness guard.
+ *
+ * Trade-side last_name is also stripped of trailing comma-suffixes
+ * ("King, Jr." → "King", "Hagerty, IV" → "Hagerty") before lookup.
+ *
+ * One-shot enrichment script. Safe to re-run. dryRun=true counts what
+ * would change without writing.
+ */
+export async function backfillBioguideIds(
+  options: { dryRun?: boolean } = {},
+): Promise<{
+  total_trades: number;
+  matched: number;
+  matched_primary: number;
+  matched_senate_no_state: number;
+  matched_suffix: number;
+  unmatched: number;
+  already_set: number;
+  written: number;
+  unmatched_keys: string[];
+}> {
+  if (isStubMode()) {
+    throw new Error(
+      "backfillBioguideIds requires LIVE mode (no service account at secrets/service-account.json)",
+    );
+  }
+  const dryRun = options.dryRun ?? false;
+  const db = await getLiveDb();
+
+  // Step 1: Load every legislator into memory and build three lookup tables.
+  const legSnap = await db.collection("legislators").get();
+  const primaryLookup: Record<string, string> = {};
+  // For Senate-only fallback: last_name → array of {bioguide, state, first, nickname}.
+  // When there's exactly one senator with that last name we use them outright;
+  // when there are multiple (e.g., Tim Scott + Rick Scott in the 119th Congress)
+  // we disambiguate by matching the trade's first name against `first` OR `nickname`.
+  const senateByLast: Record<
+    string,
+    Array<{ bioguide: string; state: string; first: string; nickname: string }>
+  > = {};
+  // For multi-word last-name fallback: last word of last_name → array of
+  // {bioguide, chamber, state, fullLast}. Used when no primary hit AND
+  // exactly one legislator's last word matches.
+  const byLastWord: Record<
+    string,
+    Array<{ bioguide: string; chamber: string; state: string; fullLast: string }>
+  > = {};
+
+  for (const doc of legSnap.docs) {
+    const x = doc.data() as {
+      bioguide_id?: string;
+      chamber?: string;
+      state?: string;
+      last_name?: string;
+      first_name?: string;
+      nickname?: string;
+    };
+    if (!x.bioguide_id || !x.chamber || !x.state || !x.last_name) continue;
+    const lastLower = x.last_name.toLowerCase();
+    const stateUpper = x.state.toUpperCase();
+    primaryLookup[`${x.chamber}|${stateUpper}|${lastLower}`] = x.bioguide_id;
+    if (x.chamber === "senate") {
+      if (!senateByLast[lastLower]) senateByLast[lastLower] = [];
+      senateByLast[lastLower].push({
+        bioguide: x.bioguide_id,
+        state: stateUpper,
+        first: (x.first_name || "").toLowerCase(),
+        nickname: (x.nickname || "").toLowerCase(),
+      });
+    }
+    const lastWord = lastLower.split(/\s+/).pop() ?? "";
+    if (lastWord && lastWord !== lastLower) {
+      if (!byLastWord[lastWord]) byLastWord[lastWord] = [];
+      byLastWord[lastWord].push({
+        bioguide: x.bioguide_id,
+        chamber: x.chamber,
+        state: stateUpper,
+        fullLast: lastLower,
+      });
+    }
+  }
+  console.error(
+    `[backfill] Loaded ${legSnap.size} legislators, ${Object.keys(primaryLookup).length} primary keys`,
+  );
+
+  // Strip ", Jr.", ", Sr.", ", III", ", IV" etc. — trailing comma-suffixes
+  // that the Senate scraper bakes into the last_name field.
+  function stripSuffix(last: string): string {
+    return last.replace(/,\s*(jr|sr|ii|iii|iv|v)\.?\s*$/i, "").trim();
+  }
+
+  // Step 2: Walk every trade. Try primary, then senate-no-state, then suffix.
+  const tradesSnap = await db.collection("congressional_trades").get();
+  const total = tradesSnap.size;
+  let matchedPrimary = 0;
+  let matchedSenateNoState = 0;
+  let matchedSuffix = 0;
+  let unmatched = 0;
+  let alreadySet = 0;
+  const unmatchedKeys = new Set<string>();
+  const updates: Array<{ docId: string; bioguide_id: string }> = [];
+
+  for (const doc of tradesSnap.docs) {
+    const x = doc.data() as {
+      member_first?: string;
+      member_last?: string;
+      state?: string;
+      chamber?: string;
+      bioguide_id?: string;
+    };
+    if (x.bioguide_id) {
+      alreadySet++;
+      continue;
+    }
+    const chamber = x.chamber || "";
+    const stateUpper = (x.state || "").toUpperCase();
+    const lastClean = stripSuffix((x.member_last || "").toLowerCase());
+
+    // Tier 1 — primary key.
+    let bioguide: string | undefined;
+    if (stateUpper && lastClean) {
+      bioguide = primaryLookup[`${chamber}|${stateUpper}|${lastClean}`];
+      if (bioguide) {
+        matchedPrimary++;
+        updates.push({ docId: doc.id, bioguide_id: bioguide });
+        continue;
+      }
+    }
+
+    // Tier 2 — senate fallback when state is missing.
+    // Single match: use it. Multi-match (e.g., Tim Scott vs Rick Scott):
+    // disambiguate by first-name match against legislator first_name OR
+    // nickname. Trade-side member_first is messy (e.g., "Richard Dean Dr"),
+    // so we compare on the FIRST WORD only.
+    if (chamber === "senate" && lastClean) {
+      const senators = senateByLast[lastClean] ?? [];
+      const onlyOne = senators.length === 1 ? senators[0] : undefined;
+      if (onlyOne) {
+        bioguide = onlyOne.bioguide;
+        matchedSenateNoState++;
+        updates.push({ docId: doc.id, bioguide_id: bioguide });
+        continue;
+      } else if (senators.length > 1) {
+        const tradeFirstWord =
+          (x.member_first || "").toLowerCase().trim().split(/\s+/)[0] || "";
+        if (tradeFirstWord) {
+          const matches = senators.filter(
+            (s) => s.first === tradeFirstWord || s.nickname === tradeFirstWord,
+          );
+          const oneMatch = matches.length === 1 ? matches[0] : undefined;
+          if (oneMatch) {
+            bioguide = oneMatch.bioguide;
+            matchedSenateNoState++;
+            updates.push({ docId: doc.id, bioguide_id: bioguide });
+            continue;
+          }
+        }
+      }
+    }
+
+    // Tier 3 — last-word match (e.g., "Delaney" → "McClain Delaney").
+    if (lastClean) {
+      const candidates = (byLastWord[lastClean] ?? []).filter(
+        (c) => c.chamber === chamber && (!stateUpper || c.state === stateUpper),
+      );
+      const oneCandidate = candidates.length === 1 ? candidates[0] : undefined;
+      if (oneCandidate) {
+        bioguide = oneCandidate.bioguide;
+        matchedSuffix++;
+        updates.push({ docId: doc.id, bioguide_id: bioguide });
+        continue;
+      }
+    }
+
+    unmatched++;
+    unmatchedKeys.add(`${chamber}|${stateUpper}|${lastClean}`);
+  }
+
+  const matched = matchedPrimary + matchedSenateNoState + matchedSuffix;
+
+  console.error(
+    `[backfill] ${total} trades: ${matched} matchable (${matchedPrimary} primary, ${matchedSenateNoState} senate-no-state, ${matchedSuffix} suffix), ${unmatched} unmatched, ${alreadySet} already set`,
+  );
+
+  // Step 3: Write the matches back. Batch updates capped at 400 per Firestore.
+  let written = 0;
+  if (!dryRun && updates.length > 0) {
+    const collection = db.collection("congressional_trades");
+    const BATCH_SIZE = 400;
+    for (let i = 0; i < updates.length; i += BATCH_SIZE) {
+      const batch = db.batch();
+      const chunk = updates.slice(i, i + BATCH_SIZE);
+      for (const u of chunk) {
+        batch.update(collection.doc(u.docId), { bioguide_id: u.bioguide_id });
+      }
+      await batch.commit();
+      written += chunk.length;
+      console.error(`[backfill] Wrote ${written}/${updates.length}...`);
+    }
+  } else if (dryRun) {
+    console.error(`[backfill] DRY RUN — no Firestore writes`);
+  }
+
+  return {
+    total_trades: total,
+    matched,
+    matched_primary: matchedPrimary,
+    matched_senate_no_state: matchedSenateNoState,
+    matched_suffix: matchedSuffix,
+    unmatched,
+    already_set: alreadySet,
+    written,
+    unmatched_keys: [...unmatchedKeys].sort(),
+  };
+}
+
 // ─── 8-K material events query ────────────────────────────────────────────
 
 export async function queryMaterialEvents(

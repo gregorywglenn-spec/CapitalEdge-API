@@ -7,6 +7,11 @@
  *                                                YAML catalog (legislators + committees +
  *                                                committee memberships joined into one
  *                                                Legislator record per current member)
+ *   tsx src/scrape.ts backfill-bioguide [--dry-run]
+ *                                                Back-fill bioguide_id on every
+ *                                                congressional_trades record by joining
+ *                                                (chamber, state, last_name) against
+ *                                                the legislators collection
  *   tsx src/scrape.ts 8k <TICKER> [--save]       Recent Form 8-K material events for one ticker
  *   tsx src/scrape.ts 8k-feed [days] [--save]    Form 8-K filings across all companies, last N days
  *   tsx src/scrape.ts usaspending <RECIPIENT> [days]
@@ -53,6 +58,7 @@
  */
 
 import {
+  backfillBioguideIds,
   getDbIfLive,
   pingFirestore,
   saveActivistOwnership,
@@ -145,6 +151,15 @@ const COMMANDS: Record<string, CliCommand> = {
         );
       }
       return legislators;
+    },
+  },
+  "backfill-bioguide": {
+    description:
+      "Walk every congressional_trades record and write the matching bioguide_id back into the row by joining (chamber, state, last_name) against the legislators collection. Idempotent — safe to re-run. Pass --dry-run to count matches without writing.",
+    run: async (args) => {
+      const dryRun = args.includes("--dry-run");
+      const stats = await backfillBioguideIds({ dryRun });
+      return stats;
     },
   },
   "8k": {

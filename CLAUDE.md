@@ -289,9 +289,9 @@ What runs end-to-end **right now**:
 
 In rough priority order. Day 5 afternoon wrap: **8 MCP tools live, server v0.9.0.** Day 4 evening had 5 tools at v0.6.1 — Day 4 night→Day 5 shipped USAspending (`get_federal_contracts` at v0.7.0, commit `d9ff966`), bioguide + `get_member_profile` (v0.8.0, salvaged from a phantom Cowork session and re-applied cleanly), and 8-K + `get_material_events` (v0.9.0, this commit). v1 surface complete + 8-K bonus shipped. All proven through end-to-end smoke tests.
 
-1. **🔴 IMMEDIATE NEXT MOVE — bioguide_id back-fill on the existing `congressional_trades` collection.** v0.8.0 ingested the bioguide catalog into the new `legislators` collection but did NOT touch the 581 already-saved congressional_trades records — those still have empty `bioguide_id` strings. One-shot enrichment script: walk `congressional_trades`, match `member_name` against `legislators.full_name` (case-insensitive substring or first+last+state tuple), set `bioguide_id`. Once done, the political-alpha cross-source pattern is fully wired: `get_congressional_trades(ticker:'LMT')` → grab `bioguide_id` from each row → `get_member_profile(bioguide_id:'<id>')` for full party/state/committee context → `get_federal_contracts(recipient_name:'Lockheed Martin')`. Estimate: 30 min.
+1. **🔴 IMMEDIATE NEXT MOVE — Lobbying disclosures (LDA) scraper.** Senate Office of Public Records. New portal, new auth flow. Adjacent to congressional trades — same buyer profile asks for both ("what's Pfizer paying lobbyists for AND which senators are trading their stock").
 
-2. **Lobbying disclosures (LDA) scraper.** Senate Office of Public Records. New portal, new auth flow. Estimated 4–5 hours. Adjacent to congressional trades — same buyer profile asks for both ("what's Pfizer paying lobbyists for AND which senators are trading their stock").
+2. **Historical legislators ingestion (v1.1 polish, ~10-15 min).** The bioguide back-fill from v0.10.0 hits a 90% match rate (522/581 records). The 59 unmatched are all Markwayne Mullin (R-OK, resigned Senate; Alan Armstrong took the seat March 2026). The catalog only contains *current* members. Fix: ingest `legislators-historical.yaml` from the unitedstates/congress-legislators repo into a sibling `legislators_historical` collection (or merge into `legislators` with `is_current` flag) so older trade records can resolve their bioguide_id even after a member departs. Same join logic, broader candidate pool.
 
 3. **Polish pass on Senate parser output (v1.1, optional)**:
    - Whitespace cleanup in bond `asset_name` fields (current output has `\n\n\n` runs from how eFD renders bond descriptors).
@@ -440,23 +440,24 @@ npm run dev                                              # boots MCP server in L
 
 ## Last Updated
 
-May 2, 2026 — Day 5 afternoon. **8 MCP tools live. Server v0.9.0.** Code pushed; Firestore indexes deployed; v1 tool surface complete + 8-K bonus shipped.
+May 2, 2026 — Day 5 evening. **8 MCP tools live, server v0.9.0; bioguide back-fill enrichment shipped at v0.10.0 (this commit).** Code pushed; Firestore indexes deployed; v1 tool surface complete + 8-K bonus + cross-source join key now wired.
 
-Day 4 night→Day 5 afternoon shipped (in order):
-- **v0.7.0 (commit `d9ff966`) — USAspending federal contract awards** + `get_federal_contracts` MCP tool. First bridge outside the SEC vertical. Clean-API ingestion at <1.5 hrs (calibration-confirmed).
-- **v0.8.0 (commit `f7b2b3a`) — bioguide ingestion** + `get_member_profile` MCP tool. **Salvaged from a phantom Cowork session** (a previous session reported v0.8.0 done; `git log` showed v0.7.0; the in-memory file contents were quarantined to `v0.8.0-salvage/` with `SALVAGE_NOTES.md` so a fresh Claude Code session could pick up cold from disk + the notes — captured as a Hard Lesson). 536 current legislators ingested. `C001098 → C001035` mis-attribution (Cruz vs Collins) corrected in three locations.
-- **v0.9.0 (this commit) — 8-K material events scraper** + `get_material_events` MCP tool. Both per-ticker mode (50 AAPL filings, item-distribution dominated by 9.01 / 2.02 / 5.02) and live-feed mode (100 filings/day across all companies, 91 with resolved tickers, 3 amendments correctly flagged) proven end-to-end. FTS-vs-submissions-API items-shape mismatch caught and fixed mid-build, captured as a Hard Lesson.
+Day 4 night→Day 5 evening shipped (in order):
+- **v0.7.0 (commit `d9ff966`) — USAspending federal contract awards** + `get_federal_contracts` MCP tool. First bridge outside the SEC vertical.
+- **v0.8.0 (commit `f7b2b3a`) — bioguide ingestion** + `get_member_profile` MCP tool. Salvaged from a phantom Cowork session via a quarantined `v0.8.0-salvage/` folder + `SALVAGE_NOTES.md`. 536 current legislators ingested. `C001098 → C001035` mis-attribution corrected in three locations.
+- **v0.9.0 (commit `e547b83`) — 8-K material events scraper** + `get_material_events` MCP tool. FTS-vs-submissions-API items-shape mismatch caught mid-build, captured as a Hard Lesson.
+- **v0.10.0 (this commit) — bioguide_id back-fill** on the existing 581 congressional_trades records. Three-tier matcher: primary (chamber+state+last_name), Senate fallback when state is empty (with first-name disambiguation for collision cases like Tim/Rick Scott), multi-word last-name fallback (April McClain Delaney). Trade-side last_name suffix-stripping handles "King, Jr.", "McConnell, Jr.", "Hagerty, IV". **522/581 (90%) successfully back-filled.** The 59 unmatched are all Markwayne Mullin (R-OK, resigned Senate; Alan Armstrong took the seat March 2026) — `legislators-current.yaml` only contains current members. Closing the gap is a v1.1 polish item: ingest `legislators-historical.yaml` into a sibling collection.
 
 State at session wrap:
 - 76 Form 4 insider trades (`insider_trades`)
 - 42+ Berkshire 13F holdings (`institutional_holdings`)
-- 241 Senate + 340 House = 581 congressional trades (`congressional_trades`) — bioguide_id back-fill is the one remaining v1 enrichment task
+- **581 congressional trades (`congressional_trades`) — 522 now have bioguide_id populated, 59 are former-member rows (Mullin) waiting on historical-YAML ingestion**
 - 90 Form 144 planned-sale notices (`planned_insider_sales`)
 - 98 Form 3 initial-ownership rows (`initial_ownership_baselines`)
 - 165+ Schedule 13D/13G activist & passive 5%+ ownership rows (`activist_ownership`)
 - USAspending federal contract awards (`federal_contracts`) — Day 4 night ingestion
 - 536 current legislators (`legislators`) — Day 5 morning ingestion
-- **100 8-K material event filings (`material_events`)** — Day 5 afternoon ingestion ← new
+- 100 8-K material event filings (`material_events`) — Day 5 afternoon ingestion
 
 **Eight MCP tools registered and serving:**
 1. `get_insider_transactions` (with `include_baseline`)
@@ -468,15 +469,15 @@ State at session wrap:
 7. `get_member_profile`
 8. `get_material_events` ← new Day 5 afternoon
 
-**v2 queue progress:** House ✓ → Form 144 ✓ → Form 3 ✓ → 13D/G ✓ → USAspending ✓ → bioguide ✓ → 8-K ✓ → **Lobbying remaining**.
+**v2 queue progress:** House ✓ → Form 144 ✓ → Form 3 ✓ → 13D/G ✓ → USAspending ✓ → bioguide ✓ → 8-K ✓ → bioguide back-fill ✓ → **Lobbying remaining**.
+
+**The political-alpha cross-source pattern is fully wired now.** Agents can compose: `get_congressional_trades(ticker:'LMT')` → grab `bioguide_id` from the trade row → `get_member_profile(bioguide_id:'<id>')` for party/state/committee context → `get_federal_contracts(recipient_name:'Lockheed Martin')` for awards that followed → `get_material_events(ticker:'LMT', item_codes:['1.01','2.01'])` for the deal flow. Single-conversation triangulation that no other MCP server exposes.
 
 **Strategic clarity locked Day 3 that still holds:** stay vertical (no medical/legal/sports — depth in US public disclosures only). Customer funnel stays bottom-up (free → indie devs → small fintechs → midsize → institutional, not the reverse). Pure-publisher posture (no derived intelligence in tool outputs, ever).
 
-**Calibration confirmed Day 5:** clean-API ingestion (USAspending, bioguide, 8-K-with-items-only) is consistently 1–1.5 hrs. SEC-XML form scrapers (Form 4 / 144 / 3 / 13D/G) are 2–3 hrs because each has its own schema discovery + bug-fix iteration. **The API-vs-XML distinction is the single best predictor of build time** — captured as a Hard Lesson. 8-K could've been a 2–3 hr build if we'd insisted on body-extraction; indexing on the metadata `items` field alone collapsed it to clean-ingestion shape.
-
 **Immediate next move on session resume:**
-1. **bioguide_id back-fill on existing `congressional_trades` records.** One-shot enrichment script: walk the 581 records, match `member_name` against the new `legislators.full_name`, set `bioguide_id`. Once done, the political-alpha cross-source pattern (`get_congressional_trades(ticker:'LMT')` → grab `bioguide_id` → `get_member_profile(bioguide_id:'<id>')` → committee context → `get_federal_contracts(recipient_name:'Lockheed Martin')` → `get_material_events(ticker:'LMT', item_codes:['1.01','2.01'])`) is fully wired. ~30 min.
-2. **Lobbying disclosures (LDA) scraper.** Senate Office of Public Records portal, new auth flow. ~4-5 hrs. Closes the political-alpha picture: who's paying lobbyists for what AND which senators are trading their stock AND who's getting federal contracts.
-3. **Deploy v1.0 as a remote MCP server.** Cloud Run or Firebase Functions on the `capitaledge-api` project. Blocks on Blaze plan upgrade and brand/domain decisions.
+1. **Lobbying disclosures (LDA) scraper.** Senate Office of Public Records portal, new auth flow. Closes the political-money picture: lobbyist payments + senator trades + federal contracts + 8-K material events all queryable side-by-side.
+2. **Historical legislators ingestion (v1.1 polish).** Brings Mullin and any future former-member trade records into the bioguide-resolution path. Sibling collection or merged with `is_current` flag.
+3. **Deploy v1.0 as a remote MCP server.** Blocks on Blaze plan upgrade and brand/domain decisions.
 
 **Open architectural question (parking, not deciding):** Greg flagged the dashboard-vs-hub data sourcing question late Day 3 — should `C:\CapitalEdge` consume from the hub's Firestore directly (Option B) or keep the locked dual-scrape posture (Option A)? Field shapes are deliberately compatible. Deferred until Greg revisits. See item 9 in "What's Open / Next Up" for the full framing.
