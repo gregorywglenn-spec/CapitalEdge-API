@@ -449,6 +449,60 @@ export interface Legislator {
 }
 
 /**
+ * One term served by a historical legislator. Members typically have 1-N
+ * terms in chronological order. The matcher's Tier-4 historical fallback
+ * uses (start, end) to filter candidates by service-window overlap with a
+ * trade's filing date.
+ */
+export interface HistoricalTerm {
+  /** "house" | "senate". Mapped from YAML's "rep" / "sen" type. */
+  chamber: string;
+  /** ISO YYYY-MM-DD when this term started. */
+  start: string;
+  /** ISO YYYY-MM-DD when this term ended. */
+  end: string;
+  state: string;
+  /** House only — empty string for Senate. May be "AL" (at-large) or "-1" (early-Congress). */
+  state_district: string;
+  party: string;
+  /** Senate class 1/2/3. Null for House terms. */
+  senate_class: number | null;
+}
+
+/**
+ * One historical legislator from `legislators-historical.yaml` — every
+ * person who has ever served in Congress (1789→present, ~12,000 entries).
+ * The corresponding `Legislator` interface only covers currently-serving
+ * members.
+ *
+ * Stored in the `legislators_historical` Firestore collection, separate
+ * from the `legislators` collection so the small current catalog (~540
+ * records) stays fast for queries that don't care about former members.
+ *
+ * No committee_assignments — those only make sense for current members.
+ * No photo_url — historical photos are inconsistently available; we can
+ * synthesize the URL on demand if a tool ever needs it.
+ *
+ * The matcher's Tier-4 fallback in backfillBioguideIds() loads every
+ * record and indexes by (chamber, state, last_name); when a trade comes
+ * in for a former member (e.g., Markwayne Mullin trades from before he
+ * resigned), the matcher filters historical candidates by date overlap
+ * with the trade's filing_date.
+ */
+export interface LegislatorHistorical {
+  bioguide_id: string;
+  full_name: string;
+  first_name: string;
+  last_name: string;
+  middle_name: string;
+  nickname: string;
+  birthday: string;
+  gender: string;
+  /** Chronological list of every term served. */
+  terms: HistoricalTerm[];
+}
+
+/**
  * Validated query parameters for the get_member_profile MCP tool.
  */
 export interface LegislatorQuery {

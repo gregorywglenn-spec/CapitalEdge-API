@@ -7,6 +7,11 @@
  *                                                YAML catalog (legislators + committees +
  *                                                committee memberships joined into one
  *                                                Legislator record per current member)
+ *   tsx src/scrape.ts bioguide-historical [--save]
+ *                                                Ingest legislators-historical.yaml — every
+ *                                                member who has ever served Congress (1789→present,
+ *                                                ~12K entries). Required for back-fill Tier-4
+ *                                                fallback on former-member trades.
  *   tsx src/scrape.ts backfill-bioguide [--dry-run]
  *                                                Back-fill bioguide_id on every
  *                                                congressional_trades record by joining
@@ -77,10 +82,14 @@ import {
   saveInsiderTransactions,
   saveInstitutionalHoldings,
   saveLegislators,
+  saveLegislatorsHistorical,
   saveLobbyingFilings,
   saveMaterialEvents,
 } from "./firestore.js";
-import { scrapeBioguideCatalog } from "./scrapers/bioguide.js";
+import {
+  scrapeBioguideCatalog,
+  scrapeBioguideHistorical,
+} from "./scrapers/bioguide.js";
 import { scrape8kByTicker, scrape8kLiveFeed } from "./scrapers/form8k.js";
 import {
   scrapeLobbyingByClient,
@@ -162,6 +171,23 @@ const COMMANDS: Record<string, CliCommand> = {
         const result = await saveLegislators(legislators);
         console.error(
           `[save] Saved ${result.saved} legislators to ${result.collection}`,
+        );
+      }
+      return legislators;
+    },
+  },
+  "bioguide-historical": {
+    description:
+      "Ingest legislators-historical.yaml — every member who has ever served Congress (1789→present, ~12K entries). Used by the bioguide-back-fill matcher's Tier-4 fallback to resolve trades by former members. Add --save to write to the legislators_historical Firestore collection. ~9 MB download, ~5-10 seconds.",
+    run: async (args) => {
+      const legislators = await scrapeBioguideHistorical();
+      if (hasSaveFlag(args)) {
+        console.error(
+          `[save] Writing ${legislators.length} historical legislator records to Firestore...`,
+        );
+        const result = await saveLegislatorsHistorical(legislators);
+        console.error(
+          `[save] Saved ${result.saved} historical legislators to ${result.collection}`,
         );
       }
       return legislators;

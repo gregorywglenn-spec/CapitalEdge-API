@@ -33,6 +33,7 @@ import type {
   InstitutionalHolding,
   InstitutionalHoldingsQuery,
   Legislator,
+  LegislatorHistorical,
   LegislatorQuery,
   LobbyingFiling,
   LobbyingFilingsQuery,
@@ -884,20 +885,68 @@ export async function saveLobbyingFilings(
   return { saved, collection: COLLECTION };
 }
 
+// ─── Historical legislators (legislators-historical.yaml) save ────────────
+
+/**
+ * Save the full historical legislators catalog (~12K entries) to the
+ * `legislators_historical` collection. Doc IDs are bioguide_id; idempotent
+ * re-runs simply overwrite via merge:true.
+ *
+ * Used by the back-fill matcher's Tier-4 fallback to resolve former
+ * members (e.g., Markwayne Mullin trades after he resigned the Senate).
+ */
+export async function saveLegislatorsHistorical(
+  legislators: LegislatorHistorical[],
+): Promise<{ saved: number; collection: string }> {
+  if (isStubMode()) {
+    throw new Error(
+      "Cannot save to Firestore in stub mode (no service account at secrets/service-account.json)",
+    );
+  }
+  const COLLECTION = "legislators_historical";
+  if (legislators.length === 0) {
+    return { saved: 0, collection: COLLECTION };
+  }
+  const db = await getLiveDb();
+  const collection = db.collection(COLLECTION);
+  const BATCH_SIZE = 400;
+  let saved = 0;
+  for (let i = 0; i < legislators.length; i += BATCH_SIZE) {
+    const batch = db.batch();
+    const chunk = legislators.slice(i, i + BATCH_SIZE);
+    for (const legislator of chunk) {
+      batch.set(collection.doc(legislator.bioguide_id), legislator, {
+        merge: true,
+      });
+    }
+    await batch.commit();
+    saved += chunk.length;
+  }
+  return { saved, collection: COLLECTION };
+}
+
 // ─── Cross-source enrichment: bioguide_id back-fill ───────────────────────
 
 /**
  * Walk every congressional_trades record and write the matching bioguide_id
- * back into the row, joining against the legislators collection.
+ * back into the row, joining against the legislators collection plus
+ * (optionally) the legislators_historical collection.
  *
- * Three-tier matcher to handle messy upstream data:
+ * Four-tier matcher to handle messy upstream data:
  *   1. Primary: (chamber, state.upper, last_name.lower) — the clean key.
  *   2. Senate-only fallback: (senate, last_name) when state is empty.
  *      The Senate scraper sometimes drops state; this rescues those rows.
- *      Only fires when exactly one senator has that last name.
- *   3. Multi-word last-name fallback: when a single trade-side surname is
- *      a suffix of a legislator's full last_name (e.g., trade "Delaney"
- *      vs YAML "McClain Delaney"). Same uniqueness guard.
+ *      Single match wins outright; multi-match disambiguates on first name.
+ *   3. Multi-word last-name fallback: when a trade's surname is the LAST
+ *      WORD of a legislator's full last_name (e.g., trade "Delaney" vs
+ *      YAML "McClain Delaney"). Same uniqueness guard.
+ *   4. Historical fallback: same (chamber, state, last_name) lookup against
+ *      the legislators_historical collection (~12K entries, all of US
+ *      history), filtered to candidates whose service window includes the
+ *      trade's transaction_date (or disclosure_date as fallback). Required
+ *      to resolve trades by former members no longer in current-members
+ *      catalog (e.g., Markwayne Mullin's pre-resignation trades). Skipped
+ *      cleanly when the legislators_historical collection is empty.
  *
  * Trade-side last_name is also stripped of trailing comma-suffixes
  * ("King, Jr." → "King", "Hagerty, IV" → "Hagerty") before lookup.
@@ -913,6 +962,7 @@ export async function backfillBioguideIds(
   matched_primary: number;
   matched_senate_no_state: number;
   matched_suffix: number;
+  matched_historical: number;
   unmatched: number;
   already_set: number;
   written: number;
@@ -982,18 +1032,66 @@ export async function backfillBioguideIds(
     `[backfill] Loaded ${legSnap.size} legislators, ${Object.keys(primaryLookup).length} primary keys`,
   );
 
+  // Step 1b: Historical lookup. Same key shape as primary but each key
+  // maps to an array of candidates (multiple senators named "Smith" over
+  // 230 years). Each candidate carries its term windows so the per-trade
+  // loop can date-filter to one in-office at a given trade date. Skipped
+  // cleanly if the legislators_historical collection is missing/empty.
+  const historicalByKey: Record<
+    string,
+    Array<{ bioguide: string; terms: Array<{ start: string; end: string }> }>
+  > = {};
+  let historicalCount = 0;
+  try {
+    const histSnap = await db.collection("legislators_historical").get();
+    historicalCount = histSnap.size;
+    for (const doc of histSnap.docs) {
+      const x = doc.data() as {
+        bioguide_id?: string;
+        last_name?: string;
+        terms?: Array<{ chamber?: string; state?: string; start?: string; end?: string }>;
+      };
+      if (!x.bioguide_id || !x.last_name || !x.terms) continue;
+      const lastLower = x.last_name.toLowerCase();
+      // Group this person's terms by (chamber, state) so one bioguide can
+      // appear under multiple keys (e.g., served as House rep then senator).
+      const termsByKey: Record<string, Array<{ start: string; end: string }>> =
+        {};
+      for (const t of x.terms) {
+        if (!t.chamber || !t.state || !t.start || !t.end) continue;
+        const key = `${t.chamber}|${t.state.toUpperCase()}|${lastLower}`;
+        if (!termsByKey[key]) termsByKey[key] = [];
+        termsByKey[key].push({ start: t.start, end: t.end });
+      }
+      for (const [key, terms] of Object.entries(termsByKey)) {
+        if (!historicalByKey[key]) historicalByKey[key] = [];
+        historicalByKey[key].push({ bioguide: x.bioguide_id, terms });
+      }
+    }
+    console.error(
+      `[backfill] Loaded ${historicalCount} historical legislators, ${Object.keys(historicalByKey).length} historical join keys`,
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(
+      `[backfill] legislators_historical collection unreadable — Tier-4 fallback disabled. (${msg})`,
+    );
+  }
+
   // Strip ", Jr.", ", Sr.", ", III", ", IV" etc. — trailing comma-suffixes
   // that the Senate scraper bakes into the last_name field.
   function stripSuffix(last: string): string {
     return last.replace(/,\s*(jr|sr|ii|iii|iv|v)\.?\s*$/i, "").trim();
   }
 
-  // Step 2: Walk every trade. Try primary, then senate-no-state, then suffix.
+  // Step 2: Walk every trade. Try primary, then senate-no-state, then
+  // suffix, then historical (with date-window filter).
   const tradesSnap = await db.collection("congressional_trades").get();
   const total = tradesSnap.size;
   let matchedPrimary = 0;
   let matchedSenateNoState = 0;
   let matchedSuffix = 0;
+  let matchedHistorical = 0;
   let unmatched = 0;
   let alreadySet = 0;
   const unmatchedKeys = new Set<string>();
@@ -1006,6 +1104,8 @@ export async function backfillBioguideIds(
       state?: string;
       chamber?: string;
       bioguide_id?: string;
+      transaction_date?: string;
+      disclosure_date?: string;
     };
     if (x.bioguide_id) {
       alreadySet++;
@@ -1014,6 +1114,9 @@ export async function backfillBioguideIds(
     const chamber = x.chamber || "";
     const stateUpper = (x.state || "").toUpperCase();
     const lastClean = stripSuffix((x.member_last || "").toLowerCase());
+    // ISO date strings sort lexicographically, so straight `<=` works.
+    // Prefer transaction_date (more accurate); fall back to disclosure_date.
+    const tradeDate = x.transaction_date || x.disclosure_date || "";
 
     // Tier 1 — primary key.
     let bioguide: string | undefined;
@@ -1071,14 +1174,48 @@ export async function backfillBioguideIds(
       }
     }
 
+    // Tier 4 — historical fallback. Same (chamber, state, last_name) key,
+    // but candidates are filtered to those whose service window includes
+    // the trade's date. Resolves former members like Markwayne Mullin.
+    // Senate-no-state historical sub-fallback handles the (senate, "", last)
+    // case the same way Tier 2 handles it for current members.
+    if (lastClean && tradeDate) {
+      let candidates: Array<{
+        bioguide: string;
+        terms: Array<{ start: string; end: string }>;
+      }> = [];
+      if (stateUpper) {
+        candidates = historicalByKey[`${chamber}|${stateUpper}|${lastClean}`] ?? [];
+      } else if (chamber === "senate") {
+        // Senate trade with empty state: union all senate keys ending in
+        // this last name. Could match any state; date filter narrows it.
+        for (const [key, arr] of Object.entries(historicalByKey)) {
+          if (key.startsWith("senate|") && key.endsWith(`|${lastClean}`)) {
+            candidates = candidates.concat(arr);
+          }
+        }
+      }
+      const inOffice = candidates.filter((c) =>
+        c.terms.some((t) => t.start <= tradeDate && tradeDate <= t.end),
+      );
+      const oneHistorical = inOffice.length === 1 ? inOffice[0] : undefined;
+      if (oneHistorical) {
+        bioguide = oneHistorical.bioguide;
+        matchedHistorical++;
+        updates.push({ docId: doc.id, bioguide_id: bioguide });
+        continue;
+      }
+    }
+
     unmatched++;
     unmatchedKeys.add(`${chamber}|${stateUpper}|${lastClean}`);
   }
 
-  const matched = matchedPrimary + matchedSenateNoState + matchedSuffix;
+  const matched =
+    matchedPrimary + matchedSenateNoState + matchedSuffix + matchedHistorical;
 
   console.error(
-    `[backfill] ${total} trades: ${matched} matchable (${matchedPrimary} primary, ${matchedSenateNoState} senate-no-state, ${matchedSuffix} suffix), ${unmatched} unmatched, ${alreadySet} already set`,
+    `[backfill] ${total} trades: ${matched} matchable (${matchedPrimary} primary, ${matchedSenateNoState} senate-no-state, ${matchedSuffix} suffix, ${matchedHistorical} historical), ${unmatched} unmatched, ${alreadySet} already set`,
   );
 
   // Step 3: Write the matches back. Batch updates capped at 400 per Firestore.
@@ -1106,6 +1243,7 @@ export async function backfillBioguideIds(
     matched_primary: matchedPrimary,
     matched_senate_no_state: matchedSenateNoState,
     matched_suffix: matchedSuffix,
+    matched_historical: matchedHistorical,
     unmatched,
     already_set: alreadySet,
     written,

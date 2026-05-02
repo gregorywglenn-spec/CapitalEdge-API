@@ -23,7 +23,12 @@
  */
 
 import yaml from "js-yaml";
-import type { CommitteeAssignment, Legislator } from "../types.js";
+import type {
+  CommitteeAssignment,
+  HistoricalTerm,
+  Legislator,
+  LegislatorHistorical,
+} from "../types.js";
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 
@@ -278,5 +283,87 @@ export async function scrapeBioguideCatalog(): Promise<Legislator[]> {
     ).toFixed(1)} committee assignments per member.`,
   );
 
+  return out;
+}
+
+// ─── Historical legislators (legislators-historical.yaml, ~12K entries) ──
+
+/**
+ * Map a YAML term block to our HistoricalTerm shape. Returns null when
+ * essential fields (start/end dates) are missing — defensive against
+ * very old or partial entries in the upstream catalog.
+ */
+function normalizeTerm(t: YamlTerm): HistoricalTerm | null {
+  if (!t.start || !t.end) return null;
+  const chamber =
+    t.type === "sen" ? "senate" : t.type === "rep" ? "house" : "";
+  if (!chamber) return null;
+  let district = "";
+  if (chamber === "house" && t.district !== undefined) {
+    district = String(t.district);
+  }
+  const senateClass =
+    chamber === "senate" && typeof t.class === "number" ? t.class : null;
+  return {
+    chamber,
+    start: t.start,
+    end: t.end,
+    state: t.state ?? "",
+    state_district: district,
+    party: t.party ?? "",
+    senate_class: senateClass,
+  };
+}
+
+function normalizeLegislatorHistorical(
+  raw: YamlLegislator,
+): LegislatorHistorical | null {
+  const bioguide = raw.id?.bioguide;
+  if (!bioguide) return null;
+
+  const terms = (raw.terms ?? [])
+    .map(normalizeTerm)
+    .filter((t): t is HistoricalTerm => t !== null);
+  if (terms.length === 0) return null;
+
+  const fullName =
+    raw.name?.official_full ??
+    [raw.name?.first, raw.name?.middle, raw.name?.last].filter((s) => s).join(" ");
+
+  return {
+    bioguide_id: bioguide,
+    full_name: fullName,
+    first_name: raw.name?.first ?? "",
+    last_name: raw.name?.last ?? "",
+    middle_name: raw.name?.middle ?? "",
+    nickname: raw.name?.nickname ?? "",
+    birthday: raw.bio?.birthday ?? "",
+    gender: raw.bio?.gender ?? "",
+    terms,
+  };
+}
+
+/**
+ * Pull every legislator who has ever served Congress (1789→present).
+ * One round trip; no committee join (committees are current-only).
+ *
+ * The file is ~9 MB (~12K entries); js-yaml parses it in 3-5 seconds.
+ */
+export async function scrapeBioguideHistorical(): Promise<LegislatorHistorical[]> {
+  console.error("[bioguide-historical] Fetching legislators-historical.yaml (~9 MB)...");
+  const legislators = await fetchYaml<YamlLegislator[]>(
+    "legislators-historical.yaml",
+  );
+  console.error(
+    `[bioguide-historical] Parsed ${legislators.length} historical entries; normalizing...`,
+  );
+  const out: LegislatorHistorical[] = [];
+  for (const raw of legislators) {
+    const norm = normalizeLegislatorHistorical(raw);
+    if (norm) out.push(norm);
+  }
+  console.error(
+    `[bioguide-historical] Normalized ${out.length} legislators (${out.reduce((sum, l) => sum + l.terms.length, 0)} total terms).`,
+  );
   return out;
 }
