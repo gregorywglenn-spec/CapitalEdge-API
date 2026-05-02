@@ -57,7 +57,23 @@ const SERVICE_ACCOUNT_PATH = resolve(
 
 // ─── Mode detection ─────────────────────────────────────────────────────────
 
+/**
+ * True when running on Cloud Functions / Cloud Run / any GCP runtime that
+ * provides Application Default Credentials. Detected via runtime env vars
+ * Google sets automatically. When this is true we use ADC for Firestore
+ * auth instead of a local service-account file.
+ */
+function isCloudRuntime(): boolean {
+  return (
+    process.env.K_SERVICE !== undefined ||
+    process.env.FUNCTION_TARGET !== undefined ||
+    process.env.FUNCTION_NAME !== undefined
+  );
+}
+
 export function isStubMode(): boolean {
+  // On Cloud Functions, ADC handles auth — never stub even without a local file.
+  if (isCloudRuntime()) return false;
   return !existsSync(SERVICE_ACCOUNT_PATH);
 }
 
@@ -81,17 +97,24 @@ let liveDb: FirestoreInstance | null = null;
 export async function getLiveDb(): Promise<FirestoreInstance> {
   if (liveDb) return liveDb;
 
-  const { cert, initializeApp, getApps } = await import("firebase-admin/app");
+  const { applicationDefault, cert, initializeApp, getApps } = await import(
+    "firebase-admin/app"
+  );
   const { getFirestore } = await import("firebase-admin/firestore");
 
-  const serviceAccount = JSON.parse(
-    readFileSync(SERVICE_ACCOUNT_PATH, "utf8"),
-  );
+  // On Cloud Functions / Cloud Run: use Application Default Credentials.
+  // The runtime service account already has Firestore access (Firebase
+  // configures this automatically). No service-account.json file needed.
+  //
+  // On local dev: load credentials from secrets/service-account.json.
+  const credential = isCloudRuntime()
+    ? applicationDefault()
+    : cert(JSON.parse(readFileSync(SERVICE_ACCOUNT_PATH, "utf8")));
 
   // initializeApp is idempotent if an app already exists with this name
   const app =
     getApps().find((a) => a.name === "[DEFAULT]") ??
-    initializeApp({ credential: cert(serviceAccount) });
+    initializeApp({ credential });
 
   liveDb = getFirestore(app);
   return liveDb;

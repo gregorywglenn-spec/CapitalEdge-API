@@ -4,6 +4,7 @@ node_modules/
 # Build output
 dist/
 *.tsbuildinfo
+functions/lib/
 
 # Secrets — service account JSON, env files, anything credential-shaped
 secrets/

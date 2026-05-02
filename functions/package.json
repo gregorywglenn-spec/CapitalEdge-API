@@ -1,0 +1,21 @@
+{
+  "name": "capital-edge-mcp-functions",
+  "description": "Firebase Cloud Functions wrappers for the Capital Edge scrapers. Deployed via firebase deploy --only functions.",
+  "type": "module",
+  "main": "lib/index.js",
+  "private": true,
+  "engines": {
+    "node": "20"
+  },
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=lib/index.js --external:firebase-admin --external:firebase-functions --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\""
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.1",
+    "firebase-functions": "^6.1.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.2"
+  }
+}
