@@ -11,6 +11,7 @@ import * as congressionalTrades from "./congressional-trades.js";
 import * as federalContracts from "./federal-contracts.js";
 import * as insiderTransactions from "./insider-transactions.js";
 import * as institutionalHoldings from "./institutional-holdings.js";
+import * as materialEvents from "./material-events.js";
 import * as memberProfile from "./member-profile.js";
 import * as plannedInsiderSales from "./planned-insider-sales.js";
 
@@ -27,6 +28,7 @@ export const TOOLS: ToolModule[] = [
   activistStakes,
   federalContracts,
   memberProfile,
+  materialEvents,
 ];
 
 export function findTool(name: string): ToolModule | undefined {

@@ -167,6 +167,91 @@ export interface Form144FilingsQuery {
   limit?: number;
 }
 
+// ─── 8-K material events ───────────────────────────────────────────────────
+
+/**
+ * One Form 8-K filing — the SEC's "current report" form, filed within 4
+ * business days of any *material* event at a publicly-traded company. The
+ * closest thing the public gets to a real-time corporate-disclosure stream.
+ *
+ * Each 8-K is structured as a checklist. The company ticks one or more
+ * "item code" boxes to declare WHAT the filing is about. We index by these
+ * item codes — the prose body is left out of v1 entirely. Agents who need
+ * the prose follow `primary_document_url` to fetch the document directly.
+ *
+ * Common item codes:
+ *   - 1.01  Entry into a Material Definitive Agreement (M&A LOI, big deal)
+ *   - 2.01  Completion of Acquisition or Disposition of Assets
+ *   - 2.02  Results of Operations and Financial Condition (earnings)
+ *   - 5.02  Departure / Election / Appointment of Officers + Directors
+ *   - 7.01  Regulation FD Disclosure
+ *   - 8.01  Other Events (catch-all)
+ *   - 9.01  Financial Statements and Exhibits — NOTE: this is a "paperwork"
+ *           box ticked by ~95% of 8-Ks. Faithfully kept in `item_codes` per
+ *           pure-publisher posture, but agents searching JUST for 9.01 will
+ *           get the firehose. Combine with another item code to focus.
+ *
+ * Amendments (8-K/A) get their own MaterialEvent row with `is_amendment: true`
+ * — the original 8-K's row stays in place. v1 does NOT populate
+ * `original_accession_number` (no reliable structured pointer in EDGAR's
+ * metadata); agents can find candidates by matching ticker + period_of_report.
+ */
+export interface MaterialEvent {
+  id: string;
+  ticker: string;
+  company_name: string | null;
+  company_cik: string;
+  accession_number: string;
+  /** ISO YYYY-MM-DD when filed with the SEC. */
+  filing_date: string;
+  /**
+   * ISO YYYY-MM-DD of the underlying event being reported. Often differs from
+   * filing_date by 1-4 business days (the SEC mandate). Empty string when the
+   * filing doesn't declare one (rare).
+   */
+  period_of_report: string;
+  /**
+   * Array of item-code strings declared in this filing — e.g., ["5.02", "9.01"].
+   * One filing can declare many items in one shot. OR-style filters
+   * (`array-contains-any`) are the natural query pattern.
+   */
+  item_codes: string[];
+  /** True for 8-K/A (amendment) filings. Original 8-K stays as its own row. */
+  is_amendment: boolean;
+  /**
+   * v1 always null. v1.1 polish would parse the amendment's body to extract
+   * the accession number it amends. Today, find candidates by matching
+   * (ticker, period_of_report) across rows.
+   */
+  original_accession_number: string | null;
+  /** Direct URL to the filing's primary HTML/text document (the prose body). */
+  primary_document_url: string;
+  /** URL to the filing's archive folder (index of all attachments). */
+  sec_filing_url: string;
+  data_source: "SEC_EDGAR_8K";
+}
+
+/**
+ * Validated query parameters for the get_material_events MCP tool.
+ */
+export interface MaterialEventsQuery {
+  ticker?: string;
+  company_cik?: string;
+  /**
+   * Array of item codes — OR semantics. Match any filing whose item_codes
+   * array contains AT LEAST ONE of these codes. Use to ask "show me anything
+   * that's a 5.02 OR a 1.01" in one query. Maps to Firestore
+   * `array-contains-any` (limited to 30 values per call by Firestore).
+   */
+  item_codes?: string[];
+  is_amendment?: boolean;
+  since?: string;
+  until?: string;
+  sort_by?: "filing_date" | "period_of_report";
+  sort_order?: "desc" | "asc";
+  limit?: number;
+}
+
 // ─── Legislators (unitedstates/congress-legislators catalog) ──────────────
 
 /**

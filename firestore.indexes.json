@@ -185,6 +185,47 @@
         { "fieldPath": "awarding_agency", "order": "ASCENDING" },
         { "fieldPath": "award_amount", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "material_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ticker", "order": "ASCENDING" },
+        { "fieldPath": "filing_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "material_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "company_cik", "order": "ASCENDING" },
+        { "fieldPath": "filing_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "material_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "is_amendment", "order": "ASCENDING" },
+        { "fieldPath": "filing_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "material_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "item_codes", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "filing_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "material_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ticker", "order": "ASCENDING" },
+        { "fieldPath": "item_codes", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "filing_date", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

@@ -35,7 +35,7 @@ import { isStubMode } from "./firestore.js";
 import { findTool, TOOLS } from "./tools/index.js";
 
 const SERVER_NAME = "capital-edge-mcp";
-const SERVER_VERSION = "0.8.0";
+const SERVER_VERSION = "0.9.0";
 
 const server = new Server(
   {

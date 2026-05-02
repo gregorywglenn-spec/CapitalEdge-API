@@ -34,6 +34,8 @@ import type {
   InstitutionalHoldingsQuery,
   Legislator,
   LegislatorQuery,
+  MaterialEvent,
+  MaterialEventsQuery,
 } from "./types.js";
 
 // Resolve service-account.json relative to the project root, not cwd. This
@@ -763,6 +765,88 @@ export async function saveFederalContractAwards(
     const chunk = awards.slice(i, i + BATCH_SIZE);
     for (const award of chunk) {
       batch.set(collection.doc(award.id), award, { merge: true });
+    }
+    await batch.commit();
+    saved += chunk.length;
+  }
+
+  return { saved, collection: COLLECTION };
+}
+
+// ─── 8-K material events query ────────────────────────────────────────────
+
+export async function queryMaterialEvents(
+  query: MaterialEventsQuery,
+): Promise<QueryResult<MaterialEvent>> {
+  if (isStubMode()) {
+    return { results: [], has_more: false };
+  }
+
+  const db = await getLiveDb();
+  let q: FirestoreQuery = db.collection("material_events");
+
+  if (query.ticker) q = q.where("ticker", "==", query.ticker);
+  if (query.company_cik) {
+    q = q.where("company_cik", "==", query.company_cik);
+  }
+  if (query.is_amendment !== undefined) {
+    q = q.where("is_amendment", "==", query.is_amendment);
+  }
+
+  // OR-semantic match across the item_codes array. Firestore's
+  // `array-contains-any` is the natural primitive — caps at 30 values per
+  // query, which is well above realistic 8-K item-code combinations.
+  if (query.item_codes && query.item_codes.length > 0) {
+    q = q.where("item_codes", "array-contains-any", query.item_codes.slice(0, 30));
+  }
+
+  const sortField = query.sort_by ?? "filing_date";
+  const sortOrder = query.sort_order ?? "desc";
+
+  if (query.since) q = q.where(sortField, ">=", query.since);
+  if (query.until) q = q.where(sortField, "<=", query.until);
+
+  q = q.orderBy(sortField, sortOrder);
+
+  const userLimit = query.limit ?? 50;
+  q = q.limit(userLimit + 1);
+
+  const snap = await q.get();
+  const docs = snap.docs.map((d) => d.data() as MaterialEvent);
+
+  const has_more = docs.length > userLimit;
+  const results = docs.slice(0, userLimit);
+  return { results, has_more };
+}
+
+/**
+ * Save 8-K filings to Firestore. Idempotent — re-running uses the same
+ * doc IDs (accession numbers) with merge:true semantics. Amendments
+ * (8-K/A) get their own doc IDs and don't overwrite the original.
+ */
+export async function saveMaterialEvents(
+  events: MaterialEvent[],
+): Promise<{ saved: number; collection: string }> {
+  if (isStubMode()) {
+    throw new Error(
+      "Cannot save to Firestore in stub mode (no service account at secrets/service-account.json)",
+    );
+  }
+  const COLLECTION = "material_events";
+  if (events.length === 0) {
+    return { saved: 0, collection: COLLECTION };
+  }
+
+  const db = await getLiveDb();
+  const collection = db.collection(COLLECTION);
+  const BATCH_SIZE = 400;
+  let saved = 0;
+
+  for (let i = 0; i < events.length; i += BATCH_SIZE) {
+    const batch = db.batch();
+    const chunk = events.slice(i, i + BATCH_SIZE);
+    for (const event of chunk) {
+      batch.set(collection.doc(event.id), event, { merge: true });
     }
     await batch.commit();
     saved += chunk.length;

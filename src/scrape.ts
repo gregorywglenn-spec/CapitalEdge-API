@@ -7,6 +7,8 @@
  *                                                YAML catalog (legislators + committees +
  *                                                committee memberships joined into one
  *                                                Legislator record per current member)
+ *   tsx src/scrape.ts 8k <TICKER> [--save]       Recent Form 8-K material events for one ticker
+ *   tsx src/scrape.ts 8k-feed [days] [--save]    Form 8-K filings across all companies, last N days
  *   tsx src/scrape.ts usaspending <RECIPIENT> [days]
  *                                                Federal contract awards for one recipient (default 365 days)
  *   tsx src/scrape.ts usaspending-feed [days] --save
@@ -61,8 +63,10 @@ import {
   saveInsiderTransactions,
   saveInstitutionalHoldings,
   saveLegislators,
+  saveMaterialEvents,
 } from "./firestore.js";
 import { scrapeBioguideCatalog } from "./scrapers/bioguide.js";
+import { scrape8kByTicker, scrape8kLiveFeed } from "./scrapers/form8k.js";
 import { scrapeForm4ByTicker, scrapeForm4LiveFeed } from "./scrapers/form4.js";
 import {
   scrapeForm144ByTicker,
@@ -141,6 +145,49 @@ const COMMANDS: Record<string, CliCommand> = {
         );
       }
       return legislators;
+    },
+  },
+  "8k": {
+    description:
+      "Scrape recent Form 8-K material-event filings for a single ticker (add --save to write to Firestore). 8-K = the SEC's 'current report' form, filed within 4 business days of any material event. Each row is one filing, indexed by item_codes (1.01 / 2.01 / 5.02 / 7.01 / 8.01 / 9.01 etc.).",
+    run: async (args) => {
+      const ticker = args.find((a) => !a.startsWith("--"));
+      if (!ticker) {
+        throw new Error("Usage: tsx src/scrape.ts 8k <TICKER> [--save]");
+      }
+      const events = await scrape8kByTicker(ticker);
+      if (hasSaveFlag(args)) {
+        console.error(
+          `[save] Writing ${events.length} material-event filings to Firestore...`,
+        );
+        const result = await saveMaterialEvents(events);
+        console.error(
+          `[save] Saved ${result.saved} filings to ${result.collection}`,
+        );
+      }
+      return events;
+    },
+  },
+  "8k-feed": {
+    description:
+      "Scrape Form 8-K material-event filings across all companies for the last N days (default 1; add --save to write to Firestore). Indexed by item_codes — agents can query for exec changes (5.02), M&A (1.01/2.01), earnings (2.02), etc. without needing to parse the prose body.",
+    run: async (args) => {
+      const positional = args.find((a) => !a.startsWith("--"));
+      const days = positional ? parseInt(positional, 10) : 1;
+      if (Number.isNaN(days) || days < 1) {
+        throw new Error("Days must be a positive integer");
+      }
+      const events = await scrape8kLiveFeed(days);
+      if (hasSaveFlag(args)) {
+        console.error(
+          `[save] Writing ${events.length} material-event filings to Firestore...`,
+        );
+        const result = await saveMaterialEvents(events);
+        console.error(
+          `[save] Saved ${result.saved} filings to ${result.collection}`,
+        );
+      }
+      return events;
     },
   },
   usaspending: {
