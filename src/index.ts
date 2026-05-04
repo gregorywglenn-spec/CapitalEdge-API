@@ -1,25 +1,35 @@
 /**
- * Capital Edge MCP Server — entry point
+ * KeyVex MCP Server — stdio entry point.
  *
- * Working-title package: `capital-edge-mcp`
- * Status: v0.2 — first tool registered (`get_insider_transactions`).
+ * Package name: `keyvex`. Public brand: KeyVex.
  *
- * This server exposes US public financial disclosures (congressional trades,
- * executive insider transactions via Form 4, institutional holdings via 13F)
- * as MCP tools designed natively for AI agents.
+ * Exposes US public financial disclosures (congressional trades, executive
+ * insider transactions, institutional holdings, federal contracts, lobbying,
+ * 8-K material events, member profiles) as MCP tools designed natively for
+ * AI agents.
  *
  * Architecture:
  *   - src/tools/<tool>.ts    one file per tool, exports `definition` + `handler`
  *   - src/tools/index.ts     registry of all tools
+ *   - src/server-setup.ts    shared Server + handler-registration logic
  *   - src/firestore.ts       data layer (auto-detects stub vs live mode)
  *   - src/types.ts           shared types
- *   - src/index.ts           this file — wires MCP server to the registry
+ *   - src/index.ts           this file — stdio wrapper for Claude Desktop
+ *   - functions/src/index.ts companion HTTP wrapper (Firebase Cloud Functions)
  *
- * Transport: stdio for v0.x local development. Remote (HTTPS / SSE) ships
- * once the first tool works end-to-end and a service account is provisioned.
+ * Transport: stdio for local clients (Claude Desktop). The HTTP/SSE entry
+ * lives in functions/ and is deployed at https://us-central1-capitaledge-api.
+ * cloudfunctions.net/mcp (will be remapped to mcp.keyvex.com once the domain
+ * cutover happens).
+ *
+ * Note: the underlying Firebase project ID (`capitaledge-api`) is permanent
+ * Google infrastructure — Google does not allow renaming project IDs. The
+ * KeyVex brand is independent of that infra-side identifier; customer-facing
+ * surfaces show "KeyVex" exclusively.
  *
  * Mode auto-detect: live Firestore is used when secrets/service-account.json
- * exists; otherwise the stub returns realistic mock data. See firestore.ts.
+ * exists OR when running on Cloud Functions (ADC); otherwise the stub returns
+ * realistic mock data. See firestore.ts.
  *
  * See README.md, MCP_PROJECT_HANDOFF.md, DATA_REQUIREMENTS_FOR_DASHBOARD.md,
  * and TOOL_DESIGN.md in the project root for full context.
@@ -30,8 +40,8 @@ import { isStubMode } from "./firestore.js";
 import { applyToolHandlers, createMcpServer } from "./server-setup.js";
 import { TOOLS } from "./tools/index.js";
 
-const SERVER_NAME = "capital-edge-mcp";
-const SERVER_VERSION = "0.14.0";
+const SERVER_NAME = "keyvex";
+const SERVER_VERSION = "0.15.0";
 
 // ─── Boot ───────────────────────────────────────────────────────────────────
 

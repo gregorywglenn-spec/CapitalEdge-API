@@ -1,11 +1,11 @@
 {
-  "name": "capital-edge-mcp",
-  "version": "0.1.0",
-  "description": "MCP server exposing US public financial disclosures (congressional trades, Form 4 insider transactions, 13F institutional holdings) as agent-native tools. Working title — likely renames before public launch.",
+  "name": "keyvex",
+  "version": "0.15.0",
+  "description": "KeyVex — MCP server exposing US public financial disclosures (congressional trades, insider transactions, institutional holdings, federal contracts, lobbying, material events) as agent-native tools.",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "capital-edge-mcp": "dist/index.js"
+    "keyvex": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",

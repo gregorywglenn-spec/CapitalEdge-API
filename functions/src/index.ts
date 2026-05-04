@@ -395,8 +395,8 @@ export const scrapeBioguideHistoricalMonthly = onSchedule(
 
 // ─── MCP HTTP server (remote-reachable tool API) ──────────────────────────
 
-const SERVER_NAME = "capital-edge-mcp";
-const SERVER_VERSION = "0.14.0";
+const SERVER_NAME = "keyvex";
+const SERVER_VERSION = "0.15.0";
 
 /**
  * The bearer token clients send in `Authorization: Bearer <key>` headers.

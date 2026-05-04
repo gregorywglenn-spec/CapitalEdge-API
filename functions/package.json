@@ -1,6 +1,6 @@
 {
-  "name": "capital-edge-mcp-functions",
-  "description": "Firebase Cloud Functions wrappers for the Capital Edge scrapers. Deployed via firebase deploy --only functions.",
+  "name": "keyvex-functions",
+  "description": "Firebase Cloud Functions wrappers for the KeyVex scrapers. Deployed via firebase deploy --only functions.",
   "type": "module",
   "main": "lib/index.js",
   "private": true,

@@ -1,6 +1,17 @@
-# Capital Edge MCP — Project Intelligence File
+# KeyVex — Project Intelligence File
 
 This is the day-1 reading for any AI agent (Claude or otherwise) opening this project cold. Read this first, then follow the cross-references at the bottom for deeper context.
+
+**Brand:** the public-facing name is **KeyVex** (decided 2026-05-04). Domain `keyvex.com` registered. Earlier doc references to "Capital Edge MCP" or "capital-edge-mcp" as the product's name are pre-rebrand history — the product is now KeyVex everywhere customer-facing.
+
+**Infra-side names that look like the old brand are NOT the brand and stay unchanged forever:**
+
+- Firebase project ID: `capitaledge-api` — Google does not allow renaming project IDs. Permanent. Customer-invisible.
+- Cloud Functions URL: `https://us-central1-capitaledge-api.cloudfunctions.net/mcp` — derived from the project ID. Will be hidden behind `mcp.keyvex.com` once the custom domain is mapped.
+- Local repo path: `C:\CapitalEdge-API` — local only, no rename benefit.
+- The dashboard sibling project (Derek's, at `C:\CapitalEdge`, Firebase project `capital-edge-d5038`) is **not** part of this rebrand. That's Derek's project; he and Greg coordinate any rename on that side separately.
+
+References below to "Capital Edge" generally point to the dashboard project unless they appear in product-name contexts (server name, package name, MCP `serverInfo.name`). Those product-name contexts have all moved to KeyVex.
 
 ## Hard Lessons — Read This First
 
@@ -67,7 +78,7 @@ This is the day-1 reading for any AI agent (Claude or otherwise) opening this pr
 
 ## What This Project Is
 
-A Model Context Protocol (MCP) server that exposes US public financial disclosures — congressional trades, executive insider transactions (Form 4), and institutional holdings (13F) — as agent-native tools. Working title in code: `capital-edge-mcp`. Final brand/domain TBD.
+A Model Context Protocol (MCP) server that exposes US public financial disclosures — congressional trades, executive insider transactions (Form 4), institutional holdings (13F), federal contracts, lobbying, 8-K material events, and member profiles — as agent-native tools. **Brand: KeyVex.** Public domain: `keyvex.com` (mapping to the Cloud Function endpoint pending). Package name: `keyvex`.
 
 Sibling product to the Capital Edge dashboard at `C:\CapitalEdge`. Dashboard sells derived intelligence (convergence score + tax engine) to retail investors. This project sells raw, normalized public-record data to developers and AI agents. Different audience, different legal posture, different product entirely.
 
