@@ -2,17 +2,24 @@
   "firestore": {
     "indexes": "firestore.indexes.json"
   },
-  "hosting": {
-    "site": "keyvex-mcp",
-    "public": "public",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-    "rewrites": [
-      {
-        "source": "**",
-        "run": { "serviceId": "mcp", "region": "us-central1" }
-      }
-    ]
-  },
+  "hosting": [
+    {
+      "site": "keyvex-mcp",
+      "public": "public",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [
+        {
+          "source": "**",
+          "run": { "serviceId": "mcp", "region": "us-central1" }
+        }
+      ]
+    },
+    {
+      "site": "capitaledge-api",
+      "public": "marketing/site",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"]
+    }
+  ],
   "functions": [
     {
       "source": "functions",

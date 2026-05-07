@@ -1,0 +1,576 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>KeyVex — MCP server for US public financial disclosures</title>
+  <meta name="description" content="The Model Context Protocol server for US public financial disclosures. Congressional trades, insider transactions, institutional holdings, lobbying, federal contracts, and material events — all queryable by AI agents through one endpoint." />
+  <meta property="og:title" content="KeyVex — MCP server for US public financial disclosures" />
+  <meta property="og:description" content="13 distinct disclosure sources, one Bearer-authenticated MCP endpoint. Designed for AI agents from the ground up." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://keyvex.com" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230d1117'/%3E%3Ctext x='50%25' y='52%25' text-anchor='middle' dominant-baseline='middle' font-family='system-ui,sans-serif' font-weight='800' font-size='32' fill='%234dff20'%3EK%3C/text%3E%3C/svg%3E" />
+  <style>
+    :root {
+      --bg: #0d1117;
+      --fg: #e6edf3;
+      --muted: #8b949e;
+      --border: #21262d;
+      --code-bg: #161b22;
+      --accent: #4dff20;
+      --accent-hover: #6dff48;
+      --row-alt: #11161d;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.55;
+      color: var(--fg);
+      background: var(--bg);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    main { max-width: 920px; margin: 0 auto; padding: 0 24px; }
+    header.topbar {
+      max-width: 920px; margin: 0 auto; padding: 28px 24px 0;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .logo {
+      font-weight: 800; font-size: 22px; letter-spacing: -0.01em;
+      color: var(--fg); text-decoration: none;
+    }
+    .logo .accent { color: var(--accent); }
+    nav.topnav a {
+      color: var(--muted); text-decoration: none; margin-left: 22px; font-size: 14px;
+    }
+    nav.topnav a:hover { color: var(--fg); }
+    h1, h2, h3, h4 { letter-spacing: -0.02em; line-height: 1.2; margin-top: 0; }
+    h1 { font-size: 44px; margin-bottom: 16px; }
+    h2 { font-size: 28px; margin: 0 0 12px; }
+    h3 { font-size: 18px; margin: 0 0 8px; }
+    p { margin: 0 0 16px; }
+    a { color: var(--accent); }
+    a:hover { color: var(--accent-hover); }
+    .muted { color: var(--muted); }
+    .small { font-size: 14px; }
+
+    /* Sections */
+    section { padding: 56px 0; border-top: 1px solid var(--border); }
+    section:first-of-type { border-top: none; }
+    section .lead { font-size: 18px; color: var(--muted); margin-bottom: 24px; }
+
+    /* Hero */
+    .hero { padding: 64px 0 56px; border-top: none; text-align: left; }
+    .hero h1 { font-size: 52px; line-height: 1.1; }
+    .hero .sub { font-size: 19px; color: var(--muted); max-width: 680px; margin-bottom: 32px; }
+    .hero .cta-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px; }
+    .btn {
+      display: inline-block; padding: 12px 22px; border-radius: 8px;
+      font-weight: 600; font-size: 15px; text-decoration: none;
+      transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+      border: 1px solid transparent;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-hover); color: #fff; }
+    .btn-secondary {
+      background: transparent; color: var(--fg); border-color: var(--border);
+    }
+    .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+    .hero .fineprint { font-size: 13px; color: var(--muted); }
+
+    /* Code blocks */
+    pre, code {
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 13.5px;
+    }
+    pre {
+      background: var(--code-bg);
+      padding: 16px 18px;
+      border-radius: 8px;
+      overflow-x: auto;
+      line-height: 1.5;
+      margin: 0 0 16px;
+      border: 1px solid var(--border);
+    }
+    p code, li code, td code {
+      background: var(--code-bg);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.92em;
+    }
+
+    /* Sources grid */
+    .sources {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 12px;
+      margin: 24px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+    .sources li {
+      padding: 14px 16px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 14.5px;
+    }
+    .sources li strong { display: block; margin-bottom: 4px; font-size: 14px; }
+    .sources li .desc { color: var(--muted); font-size: 13.5px; line-height: 1.45; }
+
+    /* Pricing */
+    .pricing-table {
+      width: 100%; border-collapse: collapse;
+      margin: 24px 0 16px;
+      font-size: 14.5px;
+    }
+    .pricing-table th, .pricing-table td {
+      padding: 12px 14px; text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    .pricing-table thead th {
+      font-weight: 600; font-size: 13px; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .pricing-table tbody tr:nth-child(odd) { background: var(--row-alt); }
+    .pricing-table .tier-name { font-weight: 700; }
+    .pricing-table .tier-price { font-size: 16px; }
+    .pricing-table .check { color: var(--accent); font-weight: 700; }
+    .pricing-table .dash { color: var(--muted); }
+
+    /* FAQ */
+    details {
+      border-top: 1px solid var(--border);
+      padding: 18px 0;
+    }
+    details:last-of-type { border-bottom: 1px solid var(--border); }
+    details summary {
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 16px;
+      list-style: none;
+      position: relative;
+      padding-right: 24px;
+    }
+    details summary::-webkit-details-marker { display: none; }
+    details summary::after {
+      content: "+";
+      position: absolute; right: 0; top: 0;
+      font-weight: 400; font-size: 22px; line-height: 1;
+      color: var(--muted);
+    }
+    details[open] summary::after { content: "−"; }
+    details > p { margin-top: 12px; color: var(--muted); }
+
+    /* Audience lists */
+    .audience-cols {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 32px;
+      margin-top: 16px;
+    }
+    @media (max-width: 720px) { .audience-cols { grid-template-columns: 1fr; } }
+    .audience-cols h3 { font-size: 16px; margin-bottom: 10px; }
+    .audience-cols ul { padding-left: 20px; margin: 0 0 0; color: var(--muted); }
+    .audience-cols ul li { margin-bottom: 8px; }
+
+    /* Footer */
+    footer {
+      max-width: 920px; margin: 0 auto; padding: 48px 24px 64px;
+      border-top: 1px solid var(--border);
+      color: var(--muted); font-size: 14px;
+    }
+    footer .footer-row { display: flex; flex-wrap: wrap; gap: 24px; margin-bottom: 16px; }
+    footer .footer-row > div { min-width: 180px; }
+    footer .footer-row strong { color: var(--fg); display: block; margin-bottom: 4px; }
+    footer .legal { font-size: 13px; line-height: 1.5; }
+
+    /* Status badge */
+    .status-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      background: rgba(77, 255, 32, 0.10);
+      color: var(--accent);
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      margin-bottom: 16px;
+      text-transform: uppercase;
+    }
+
+    /* Brand slogan / tagline */
+    .slogan {
+      display: block;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.32em;
+      color: var(--accent);
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+
+    @media (max-width: 600px) {
+      .hero h1 { font-size: 36px; }
+      h2 { font-size: 24px; }
+      header.topbar { padding-top: 20px; }
+      nav.topnav a { margin-left: 14px; font-size: 13px; }
+      .pricing-table th:nth-child(4), .pricing-table td:nth-child(4) { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <a href="#" class="logo">Key<span class="accent">Vex</span></a>
+    <nav class="topnav">
+      <a href="#sources">Sources</a>
+      <a href="#demo">Demo</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+  </header>
+
+  <main>
+
+    <!-- Hero -->
+    <section class="hero">
+      <span class="slogan">Plan. Execute. Elevate.</span>
+      <div class="status-badge">Pre-launch · Preview access</div>
+      <h1>The MCP server for US public financial disclosures.</h1>
+      <p class="sub">
+        13 distinct disclosure sources — congressional trades, insider transactions,
+        institutional holdings, lobbying spend, federal contracts, member profiles,
+        financial disclosures, and material events — all queryable by AI agents
+        through one Bearer-authenticated endpoint.
+      </p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="mailto:contact@capitaledge.app?subject=KeyVex%20preview%20access">Get free preview access</a>
+        <a class="btn btn-secondary" href="#demo">See the demo</a>
+      </div>
+      <p class="fineprint">5,000 calls / month free. Paid tiers from $29/mo. No credit card required for preview.</p>
+    </section>
+
+    <!-- Section 1 — What KeyVex is -->
+    <section id="sources">
+      <h2>One queryable surface for every public US financial disclosure that matters.</h2>
+      <p class="lead">
+        KeyVex normalizes 13 distinct US public-record sources into a clean Model
+        Context Protocol (MCP) server. Connect it to Claude, Cursor, your custom
+        agent, or any MCP-compatible client. No scraping, no parsing, no
+        schema-wrangling on your end.
+      </p>
+      <ol class="sources">
+        <li><strong>SEC Form 4</strong><span class="desc">Open-market insider trades by officers, directors, and 10%+ holders.</span></li>
+        <li><strong>SEC Form 144</strong><span class="desc">Planned-sale notices — insider sells <em>before</em> they happen.</span></li>
+        <li><strong>SEC Form 3</strong><span class="desc">Initial-ownership baselines (anchors Form 4 deltas to a starting position).</span></li>
+        <li><strong>SEC 13F</strong><span class="desc">Quarterly institutional fund holdings.</span></li>
+        <li><strong>SEC 13D / 13G</strong><span class="desc">Activist + passive 5%+ ownership disclosures.</span></li>
+        <li><strong>SEC 8-K</strong><span class="desc">Material-event filings (M&amp;A, exec changes, earnings, restructurings).</span></li>
+        <li><strong>USAspending federal contracts</strong><span class="desc">Federal contract awards across every agency.</span></li>
+        <li><strong>Senate LDA lobbying</strong><span class="desc">Quarterly lobbying disclosures filed under the Lobbying Disclosure Act.</span></li>
+        <li><strong>Senate eFD PTRs</strong><span class="desc">Senator + spouse + dependent stock trades, filed via the Senate eFD portal.</span></li>
+        <li><strong>House Clerk PTRs</strong><span class="desc">Representative + spouse + dependent trades, filed via the House Clerk.</span></li>
+        <li><strong>Current member catalog</strong><span class="desc">Every sitting senator and representative with full committee + subcommittee assignments.</span></li>
+        <li><strong>Historical legislators</strong><span class="desc">Every member who has ever served Congress (1789→present).</span></li>
+        <li><strong>Form 278 annual financial disclosures</strong><span class="desc">Net-worth statements covering members' assets, liabilities, and outside income.</span></li>
+      </ol>
+      <p class="muted small" style="margin-top: 24px;">Refreshed continuously by autonomous schedulers. No human in the loop.</p>
+    </section>
+
+    <!-- Section 2 — Cross-source play -->
+    <section id="demo">
+      <h2>One conversation. Five sources. Zero stitching.</h2>
+      <p class="lead">
+        Most financial-data APIs give you one narrow view. KeyVex's tools are
+        designed to chain. Here's a real query an agent can run in a single
+        conversation:
+      </p>
+      <pre><code>Agent: get_congressional_trades(ticker:"LMT", since:"2026-01-01")
+→ returns 23 trades by senators and reps in Lockheed Martin stock
+
+Agent: get_member_profile(bioguide_id:"&lt;each trader's id&gt;")
+→ returns party, state, committees — including who sits on Armed Services
+
+Agent: get_federal_contracts(recipient_name:"Lockheed Martin", since:"2026-01-01")
+→ returns 1,247 LMT contracts awarded by DoD
+
+Agent: get_material_events(ticker:"LMT", item_codes:["1.01","2.01"])
+→ returns Lockheed's recent material-agreement and acquisition 8-K filings
+
+Agent: get_lobbying_filings(client_name:"Lockheed Martin", filing_year:2026)
+→ returns LMT's lobbying spend, what issues, what agencies contacted</code></pre>
+      <p>
+        Five separate data sources, joined by <code>ticker</code> +
+        <code>bioguide_id</code> + <code>recipient_name</code>. Triangulation that
+        takes a Bloomberg terminal and an analyst now takes a single AI agent and
+        a few seconds.
+      </p>
+      <p class="muted small">No other MCP server exposes this combined surface today.</p>
+    </section>
+
+    <!-- Section 3 — How it works -->
+    <section id="how">
+      <h2>Connect in under five minutes.</h2>
+      <p class="lead">
+        KeyVex is a stateless Streamable HTTP MCP server. Authentication is a
+        Bearer token in the <code>Authorization</code> header. That's it.
+      </p>
+
+      <h3 style="margin-top: 28px;">Endpoint</h3>
+      <pre><code>https://mcp.keyvex.com</code></pre>
+
+      <h3 style="margin-top: 24px;">Health check (no auth required)</h3>
+      <pre><code>curl https://mcp.keyvex.com</code></pre>
+
+      <h3 style="margin-top: 24px;">Tool call (auth required)</h3>
+      <pre><code>curl -X POST https://mcp.keyvex.com \
+  -H "Authorization: Bearer &lt;your-key&gt;" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'</code></pre>
+
+      <p class="muted small" style="margin-top: 12px;">
+        From Claude Desktop: add KeyVex to your <code>claude_desktop_config.json</code>
+        as a remote MCP server with your Bearer token. One-click install through
+        Anthropic's MCP directory once review completes.
+      </p>
+    </section>
+
+    <!-- Section 4 — Pricing -->
+    <section id="pricing">
+      <h2>Pay for what you actually use.</h2>
+      <p class="lead">
+        Generous free tier. Hard quotas, no overage charges. Same data freshness
+        at every tier — the only difference is monthly call quota and support
+        response time.
+      </p>
+      <table class="pricing-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Hacker</th>
+            <th>Builder</th>
+            <th>Pro</th>
+            <th>Enterprise</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="tier-name">Price</td>
+            <td class="tier-price">Free</td>
+            <td class="tier-price">$29/mo</td>
+            <td class="tier-price">$199/mo</td>
+            <td class="tier-price">Custom</td>
+          </tr>
+          <tr>
+            <td class="tier-name">API calls / month</td>
+            <td>5,000</td>
+            <td>50,000</td>
+            <td>500,000</td>
+            <td>Unlimited</td>
+          </tr>
+          <tr>
+            <td class="tier-name">All 13 tools</td>
+            <td class="check">✓</td>
+            <td class="check">✓</td>
+            <td class="check">✓</td>
+            <td class="check">✓</td>
+          </tr>
+          <tr>
+            <td class="tier-name">Same data freshness</td>
+            <td class="check">✓</td>
+            <td class="check">✓</td>
+            <td class="check">✓</td>
+            <td class="check">✓</td>
+          </tr>
+          <tr>
+            <td class="tier-name">Support</td>
+            <td>Community</td>
+            <td>Email (48h)</td>
+            <td>Priority email (24h)</td>
+            <td>Dedicated + SLA</td>
+          </tr>
+          <tr>
+            <td class="tier-name">Custom rate limits</td>
+            <td class="dash">—</td>
+            <td class="dash">—</td>
+            <td class="check">✓</td>
+            <td class="check">✓</td>
+          </tr>
+          <tr>
+            <td class="tier-name">Annual discount</td>
+            <td class="dash">—</td>
+            <td>$290/yr (2 mo free)</td>
+            <td>$1,990/yr (2 mo free)</td>
+            <td>Custom</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="muted small">
+        When you hit your monthly limit, requests are politely rejected until the
+        next month or you upgrade. No surprise bills.
+      </p>
+    </section>
+
+    <!-- Section 5 — Who it's for -->
+    <section id="audience">
+      <h2>Built for the people building tools.</h2>
+      <p class="lead">
+        KeyVex isn't a dashboard. It isn't a stock-picker. It's data infrastructure
+        for the people building the next generation of financial-research tools and
+        AI agents.
+      </p>
+      <div class="audience-cols">
+        <div>
+          <h3>You'll like KeyVex if you're:</h3>
+          <ul>
+            <li>An indie dev building an AI agent that reasons over public financial disclosures</li>
+            <li>A small fintech firm that needs clean, normalized SEC + congressional data without standing up your own scraping pipeline</li>
+            <li>A quant researcher prototyping signals across multiple disclosure sources</li>
+            <li>A product team adding regulatory-data context to an AI assistant</li>
+            <li>An academic studying insider trading, congressional behavior, or market structure</li>
+          </ul>
+        </div>
+        <div>
+          <h3>KeyVex is probably not for you if you want:</h3>
+          <ul>
+            <li>A pretty web dashboard with charts</li>
+            <li>Real-time intraday market data (we cover <em>disclosed</em> trades, not live exchange feeds)</li>
+            <li>Trading signals or buy/sell recommendations</li>
+            <li>Pre-built backtests (we're the data layer; you build on top)</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 6 — Pure publisher -->
+    <section id="posture">
+      <h2>Pure-publisher posture. Public-record data only.</h2>
+      <p class="lead">
+        KeyVex returns raw, normalized public-record data from official US
+        government sources. We do not generate trading signals, provide investment
+        advice of any kind, score or rank securities, or make claims about future
+        performance.
+      </p>
+      <p>
+        This isn't a marketing distinction — it's a deliberate legal posture
+        (Lowe v. SEC, 1985) that keeps KeyVex cleanly outside investment-advisor
+        territory. We provide the data; what you build on top of it is yours.
+      </p>
+    </section>
+
+    <!-- Section 7 — FAQ -->
+    <section id="faq">
+      <h2>FAQ</h2>
+
+      <details>
+        <summary>How fresh is the data?</summary>
+        <p>
+          Most sources update within hours of being filed. SEC Form 4 (insider
+          trades) within 30 minutes. 8-K material events hourly. Congressional
+          PTRs daily at 6 AM ET. Lobbying disclosures daily. Quarterly filings
+          (13F, lobbying) on their natural cadence with sub-day latency once filed.
+        </p>
+      </details>
+
+      <details>
+        <summary>Where does the data come from?</summary>
+        <p>
+          Official US government sources only — SEC EDGAR, USAspending.gov, Senate
+          eFD, House Clerk Office, Senate LDA, the unitedstates/congress-legislators
+          public catalog. All public-record data. No paid data partnerships, no
+          scraped paywalled content.
+        </p>
+      </details>
+
+      <details>
+        <summary>Is the data delayed for the free tier?</summary>
+        <p>
+          No. All tiers get the same data freshness. Tiers differ only in monthly
+          call quota and support response time.
+        </p>
+      </details>
+
+      <details>
+        <summary>Can I get historical data?</summary>
+        <p>
+          We currently keep recent windows of each source in our queryable
+          warehouse. Deeper historical backfills (multi-year) for specific tickers
+          or agencies are an Enterprise-tier conversation — contact us.
+        </p>
+      </details>
+
+      <details>
+        <summary>What happens if I exceed my call quota?</summary>
+        <p>
+          Requests are rejected with a 429 response until your quota resets at the
+          start of the next month, or you upgrade. We don't auto-bill overages —
+          no surprises.
+        </p>
+      </details>
+
+      <details>
+        <summary>How do I cancel?</summary>
+        <p>
+          Self-serve cancellation from your account page. No phone calls, no
+          retention specialists. Cancellation takes effect at the end of your
+          current billing period.
+        </p>
+      </details>
+
+      <details>
+        <summary>Do I need a credit card to try the free tier?</summary>
+        <p>
+          No. Email signup, get an API key, start querying. Credit card only
+          required for paid tiers.
+        </p>
+      </details>
+
+      <details>
+        <summary>Is there an SLA?</summary>
+        <p>
+          Best-effort uptime for Hacker / Builder / Pro tiers — we run on Google
+          Cloud Functions Gen 2 with autonomous failover, but no formal SLA.
+          Enterprise tier includes a contractual uptime commitment.
+        </p>
+      </details>
+
+      <details>
+        <summary>Can I self-host or get an export?</summary>
+        <p>
+          Not currently. Enterprise customers can discuss custom-deployment options.
+        </p>
+      </details>
+    </section>
+
+  </main>
+
+  <footer>
+    <div class="footer-row">
+      <div>
+        <strong>KeyVex</strong>
+        MCP server for US public financial disclosures.
+      </div>
+      <div>
+        <strong>Contact</strong>
+        <a href="mailto:contact@capitaledge.app">contact@capitaledge.app</a><br>
+        <span class="small">contact@keyvex.com soon</span>
+      </div>
+      <div>
+        <strong>API status</strong>
+        <a href="https://mcp.keyvex.com">mcp.keyvex.com</a> (returns JSON)
+      </div>
+      <div>
+        <strong>Documentation</strong>
+        GitHub README<br>
+        <span class="small">Repo public alongside launch</span>
+      </div>
+    </div>
+    <p class="legal">
+      KeyVex is a data publisher, not an investment advisor. Nothing on this site
+      or in API responses is investment advice. Use of this service is subject to
+      our Terms of Service and Privacy Policy <span class="muted">(coming with LLC formation)</span>.
+    </p>
+  </footer>
+
+</body>
+</html>
