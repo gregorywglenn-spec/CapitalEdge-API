@@ -16,7 +16,7 @@
 > The MCP server for US public financial disclosures.
 
 **Subheadline:**
-> Congressional trades, insider transactions, institutional holdings, lobbying spend, federal contracts, and material events — all queryable by AI agents through one Bearer-authenticated endpoint.
+> 13 distinct disclosure sources — congressional trades, insider transactions, institutional holdings, lobbying spend, federal contracts, member profiles, financial disclosures, and material events — all queryable by AI agents through one Bearer-authenticated endpoint.
 
 **Primary CTA:**
 > [ Get free preview access ] *(email signup form)*
@@ -32,19 +32,21 @@
 
 KeyVex normalizes 13 distinct US public-record sources into a clean Model Context Protocol (MCP) server. Connect it to Claude, Cursor, your custom agent, or any MCP-compatible client. No scraping, no parsing, no schema-wrangling on your end.
 
-**Sources covered:**
+**The 13 sources:**
 
-- **SEC Form 4** — open-market insider trades by officers, directors, and 10%+ holders
-- **SEC Form 144** — planned-sale notices (insider sells *before* they happen)
-- **SEC Form 3** — initial-ownership baselines (anchors Form 4 deltas to a starting position)
-- **SEC 13F** — quarterly institutional fund holdings
-- **SEC 13D / 13G** — activist + passive 5%+ ownership disclosures
-- **SEC 8-K** — material-event filings (M&A, exec changes, earnings, restructurings)
-- **Congressional Periodic Transaction Reports** — Senate eFD + House Clerk PTRs
-- **Member profiles + committee assignments** — every current senator and representative
-- **Historical legislators** — every member who has ever served Congress (1789→present)
-- **Federal contract awards** — USAspending.gov data
-- **Lobbying disclosures** — Senate LDA quarterly filings
+1. **SEC Form 4** — open-market insider trades by officers, directors, and 10%+ holders
+2. **SEC Form 144** — planned-sale notices (insider sells *before* they happen)
+3. **SEC Form 3** — initial-ownership baselines (anchors Form 4 deltas to a starting position)
+4. **SEC 13F** — quarterly institutional fund holdings
+5. **SEC 13D / 13G** — activist + passive 5%+ ownership disclosures
+6. **SEC 8-K** — material-event filings (M&A, exec changes, earnings, restructurings)
+7. **Federal contract awards** — USAspending.gov data
+8. **Lobbying disclosures** — Senate LDA quarterly filings
+9. **Senate Periodic Transaction Reports** — eFD-filed senator + spouse + dependent trades
+10. **House Periodic Transaction Reports** — Clerk-filed representative + spouse + dependent trades
+11. **Current member catalog** — every sitting senator and representative, with full committee + subcommittee assignments
+12. **Historical legislators** — every member who has ever served Congress (1789→present)
+13. **Form 278 annual financial disclosures** — net-worth statements covering members' assets, liabilities, and outside income
 
 Refreshed continuously by autonomous schedulers. No human in the loop.
 
