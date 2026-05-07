@@ -219,7 +219,7 @@ A: Not currently. Enterprise customers can discuss custom-deployment options.
 
 **API status:** [https://mcp.keyvex.com](https://us-central1-capitaledge-api.cloudfunctions.net/mcp) *(returns JSON; live status indicator coming)*
 
-**Documentation:** GitHub README *(link to `github.com/gregorywglenn-spec/CapitalEdge-API` once renamed to `keyvex`)*
+**Documentation:** [github.com/gregorywglenn-spec/Keyvex-API](https://github.com/gregorywglenn-spec/Keyvex-API) *(currently private; will be made public alongside launch)*
 
 **Legal:** Terms of Service · Privacy Policy *(coming with LLC formation)*
 
@@ -236,7 +236,7 @@ A: Not currently. Enterprise customers can discuss custom-deployment options.
 3. **Endpoint URL placeholder** — currently shows the real Cloud Functions URL alongside the future `mcp.keyvex.com` mapping. Once domain mapping is live, simplify to just `mcp.keyvex.com`.
 4. **Email** — same flip from `@capitaledge.app` to `@keyvex.com` once the email is set up.
 5. **Company name in footer** — "[Company Name] LLC" — fill in once the LLC paperwork lands.
-6. **GitHub repo link** — currently the live URL with the old name; will update when repo is renamed.
+6. **Make the GitHub repo public** — currently private; flip to public when ready for the world to read source. Repo URL is `Keyvex-API` (renamed 2026-05-07; old `CapitalEdge-API` URL still redirects).
 
 **Things deliberately NOT included:**
 

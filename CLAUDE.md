@@ -93,7 +93,7 @@ Decisions made tonight that should not be re-litigated without explicit reason:
 - **Pure-publisher legal posture.** No convergence score, no signal weight, no derived rank, no "buy"/"strong buy" language. Tools return raw filings only. This is what keeps the product out of investment-advisor territory; the dashboard handles the publisher's-exemption complexity (Lowe v. SEC, 1985), this project sidesteps it entirely.
 - **Stack: Node 20+ / TypeScript / MCP SDK / Firebase Admin.** Matches the dashboard codebase enough to share scraper logic; uses TypeScript strict mode for tool param safety.
 - **Transport: stdio for v0.x dev, remote (HTTPS) for v1 deployment.** Hosting target is a sibling Firebase project's Cloud Functions or Cloud Run. Deployment infrastructure not yet stood up.
-- **Repo: `https://github.com/gregorywglenn-spec/CapitalEdge-API`.** Private. Greg's GitHub username is `gregorywglenn-spec` (note: not `gregorywglenn`).
+- **Repo: `https://github.com/gregorywglenn-spec/Keyvex-API`.** Private. Greg's GitHub username is `gregorywglenn-spec` (note: not `gregorywglenn`). Old name `CapitalEdge-API` auto-redirects via GitHub's permanent rename redirect (renamed 2026-05-07).
 
 ## Current State (April 30, 2026 — Day 3 mid-session, work paused)
 
@@ -393,7 +393,7 @@ In rough priority order. Day 5 night wrap: **9 MCP tools live, server v0.13.0, 1
 
 ## External Locations
 
-- **GitHub repo:** https://github.com/gregorywglenn-spec/CapitalEdge-API (private)
+- **GitHub repo:** https://github.com/gregorywglenn-spec/Keyvex-API (private; old `CapitalEdge-API` URL auto-redirects)
 - **Firebase project:** https://console.firebase.google.com/project/capitaledge-api/overview
   - Firestore database: `(default)` in `us-central1`, production-mode rules
   - Service account: `firebase-adminsdk-fbsvc@capitaledge-api.iam.gserviceaccount.com`
