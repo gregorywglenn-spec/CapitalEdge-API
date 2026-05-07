@@ -499,7 +499,7 @@ export const scheduledHealthCheck = onSchedule(
 // ─── MCP HTTP server (remote-reachable tool API) ──────────────────────────
 
 const SERVER_NAME = "keyvex";
-const SERVER_VERSION = "0.15.0";
+const SERVER_VERSION = "0.16.0";
 
 /**
  * The bearer token clients send in `Authorization: Bearer <key>` headers.
