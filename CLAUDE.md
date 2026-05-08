@@ -649,6 +649,37 @@ After the planned end-of-day, Greg pushed through the final DNS step. Sequence:
 
 **Landing page state:** still served at `https://capitaledge-api.web.app`. Apex `keyvex.com` and `www.keyvex.com` mappings are the next domain step (item 14 on the to-do list).
 
+### Day 7 LATER — Form 278 v1A LIVE (10th MCP tool, v0.17.0)
+
+After `mcp.keyvex.com` went live, Derek's dashboard project was confirmed shelved and Derek's source code for `scheduledSyncFD` was inaccessible (lives on his laptop, not in the shared `gregorywglenn-spec/capital-edge` repo's main branch). Greg made the call: **build Form 278 from scratch** rather than wait. Scope-locked to v1A metadata-only (no PDF parsing) for shippability tonight.
+
+Built + shipped in commit `1335a95`:
+- `src/scrapers/form278.ts` — searches Senate eFD with `report_types=[7,8,9,12]` (Annual / New Filer / Termination / Combined). Reuses Senate eFD session protocol from `senate.ts` (which now exports `createSession` + `extractFormFields`). Pages through all matching filings within the lookback window.
+- `Form278Filing` + `Form278FilingsQuery` types. New Firestore collection `annual_financial_disclosures`. New `form278` CLI command. New `get_annual_financial_disclosures` MCP tool — **10th tool overall**.
+- 5 new Firestore composite indexes (bioguide_id / chamber / state / filing_year / report_type — each paired with `filing_date desc`). Deployed.
+- `scrapeForm278Weekly` scheduled Cloud Function — Mondays 6:30 AM ET, 35-day rolling window. Deployed.
+- Version bumped: `SERVER_VERSION` 0.16.0 → 0.17.0 across `src/` + `functions/` + `package.json`. `mcp` Cloud Function redeployed; live endpoint now advertises v0.17.0 + 10 tools.
+
+**Verified end-to-end via live `mcp.keyvex.com`:**
+- Health check returns `version: "0.17.0", tools: 10, tool_names: [...,"get_annual_financial_disclosures"]`
+- `tools/call get_annual_financial_disclosures(limit:3)` returns three real Form 278 filings (Pamela Stevenson, Kathryn Whitener — 2026 Senate candidates' candidate filings) with `report_url` pointing at the source eFD HTML/PDF.
+- Initial backfill: **50 Form 278 filings** ingested into `annual_financial_disclosures` collection from a 90-day lookback.
+
+**v1A scope (intentional limitations):**
+- Senate eFD only — House Clerk Form 278 is v1.1.
+- METADATA only — no PDF parsing. Agents follow `report_url` for asset / liability / income schedule detail.
+- `bioguide_id` and `party` fields empty until back-fill matcher runs against the legislators catalog (similar to congressional_trades back-fill pattern from Day 5).
+
+**v1.1 queue (deliberately deferred):**
+- House Clerk Form 278 (filter the yearly XML index for FD report type — same plumbing as house.ts PTR scraper).
+- PDF parsing for Schedule A (assets) + Schedule C (liabilities) → compute `estimated_net_worth_min/max`. This is the killer feature ("which senators are worth $20M+?"). Brittle work — 50-200 page PDFs with multi-page tables and ranged values. Deserves a fresh-eyes session.
+- bioguide_id back-fill against the existing `legislators` + `legislators_historical` catalogs — apply the same Tier-1 / Tier-2 / Tier-3 / Tier-4 matcher used for `congressional_trades`.
+
+**Strategic implication of Derek's project being shelved:**
+- KeyVex now stands operationally alone. We don't read from `capital-edge-d5038`, don't depend on Derek's uptime, don't sunset our scrapers for an Option B consolidation that was premised on Derek being active.
+- The "13 unique scrapers across the unified KeyVex operation" framing remains accurate, but the breakdown shifts: now **9 in this codebase** (was 8 + Form 278 added) and **4 in Derek's** (down from 5 — Form 278 is no longer Derek's exclusive). Derek's remaining 4 are congressional_trades / congress / memberStats / netWorthValidation — still running on his project autonomously.
+- All operational risk for KeyVex's product lives in this repo + `capitaledge-api` Firebase project. We control the entire stack.
+
 **Last Updated**
 
-May 7, 2026 — Day 7 LATE (~5 PM ET). **9 MCP tools live, server v0.16.0, KeyVex rebrand complete, landing page shipped live at `capitaledge-api.web.app`, `https://mcp.keyvex.com` LIVE with auto-managed TLS, GitHub repo renamed to `Keyvex-API`, multi-site Firebase Hosting set up, service-key REST CLI built (`src/firebase-rest.ts`).** Remaining launch path: map `keyvex.com` apex → landing page → logo wire-in → Privacy Policy + Loom + registry submissions → LLC + billing.
+May 7, 2026 — Day 7 LATER (~9 PM ET). **10 MCP tools live, server v0.17.0, KeyVex rebrand complete, landing page shipped live at `capitaledge-api.web.app`, `https://mcp.keyvex.com` LIVE with auto-managed TLS, GitHub repo renamed to `Keyvex-API`, multi-site Firebase Hosting set up, service-key REST CLI built, Form 278 v1A scraper + MCP tool shipped (10th tool), 13 autonomous scrapers in production (9 in this codebase + 4 in shelved-but-still-running dashboard project).** Remaining launch path: v1.1 Form 278 (House + PDF parsing) → map `keyvex.com` apex → logo wire-in → Privacy Policy + Loom + registry submissions → LLC + billing.
