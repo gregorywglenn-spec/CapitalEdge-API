@@ -664,9 +664,19 @@ export async function scrapeForm3LiveFeed(
 
   while (true) {
     const url = `${CONFIG.SEARCH_URL}?q=%22%22&forms=3&dateRange=custom&startdt=${startStr}&enddt=${endStr}&from=${from}&size=${PAGE_SIZE}`;
-    const data = (await fetchJson(url)) as {
+    let data: {
       hits?: { hits?: EdgarSearchHit[]; total?: { value?: number } };
     };
+    try {
+      data = (await fetchJson(url)) as {
+        hits?: { hits?: EdgarSearchHit[]; total?: { value?: number } };
+      };
+    } catch (err) {
+      console.error(
+        `[form3 live] pagination terminated at from=${from} (will save ${allHits.length} collected hits): ${err instanceof Error ? err.message : String(err)}`,
+      );
+      break;
+    }
     const pageHits = data.hits?.hits ?? [];
     if (totalAvailable === 0) {
       totalAvailable = data.hits?.total?.value ?? pageHits.length;

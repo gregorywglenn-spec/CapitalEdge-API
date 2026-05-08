@@ -393,9 +393,19 @@ export async function scrape8kLiveFeed(
 
   while (true) {
     const url = `${CONFIG.SEARCH_URL}?q=&forms=8-K&dateRange=custom&startdt=${startStr}&enddt=${endStr}&from=${from}&size=${PAGE_SIZE}`;
-    const data = (await fetchJson(url)) as {
+    let data: {
       hits?: { hits?: FtsHit[]; total?: { value?: number } };
     };
+    try {
+      data = (await fetchJson(url)) as {
+        hits?: { hits?: FtsHit[]; total?: { value?: number } };
+      };
+    } catch (err) {
+      console.error(
+        `[8k live] pagination terminated at from=${from} (will save ${allHits.length} collected hits): ${err instanceof Error ? err.message : String(err)}`,
+      );
+      break;
+    }
     const pageHits = data.hits?.hits ?? [];
     if (totalAvailable === 0) {
       totalAvailable = data.hits?.total?.value ?? pageHits.length;

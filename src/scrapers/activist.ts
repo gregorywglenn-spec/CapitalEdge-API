@@ -709,9 +709,19 @@ export async function scrapeActivistLiveFeed(
     try {
       while (true) {
         const url = `${CONFIG.SEARCH_URL}?q=%22%22&forms=${formEncoded}&dateRange=custom&startdt=${startStr}&enddt=${endStr}&from=${from}&size=${PAGE_SIZE}`;
-        const data = (await fetchJson(url)) as {
+        let data: {
           hits?: { hits?: EdgarSearchHit[]; total?: { value?: number } };
         };
+        try {
+          data = (await fetchJson(url)) as {
+            hits?: { hits?: EdgarSearchHit[]; total?: { value?: number } };
+          };
+        } catch (err) {
+          console.error(
+            `[13d-g live] ${form}: pagination terminated at from=${from} (will save ${formHits.length} collected hits): ${err instanceof Error ? err.message : String(err)}`,
+          );
+          break;
+        }
         const pageHits = data.hits?.hits ?? [];
         if (totalAvailable === 0) {
           totalAvailable = data.hits?.total?.value ?? pageHits.length;
