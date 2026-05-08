@@ -10,6 +10,8 @@ import * as activistStakes from "./activist-stakes.js";
 import * as annualFinancialDisclosures from "./annual-financial-disclosures.js";
 import * as congressionalTrades from "./congressional-trades.js";
 import * as federalContracts from "./federal-contracts.js";
+import * as historicalMember from "./historical-member.js";
+import * as initialOwnershipBaselines from "./initial-ownership-baselines.js";
 import * as insiderTransactions from "./insider-transactions.js";
 import * as institutionalHoldings from "./institutional-holdings.js";
 import * as lobbyingFilings from "./lobbying-filings.js";
@@ -27,9 +29,11 @@ export const TOOLS: ToolModule[] = [
   institutionalHoldings,
   congressionalTrades,
   plannedInsiderSales,
+  initialOwnershipBaselines,
   activistStakes,
   federalContracts,
   memberProfile,
+  historicalMember,
   materialEvents,
   lobbyingFilings,
   annualFinancialDisclosures,

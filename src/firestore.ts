@@ -36,6 +36,7 @@ import type {
   InstitutionalHoldingsQuery,
   Legislator,
   LegislatorHistorical,
+  LegislatorHistoricalQuery,
   LegislatorQuery,
   LobbyingFiling,
   LobbyingFilingsQuery,
@@ -1453,6 +1454,102 @@ export async function queryLegislators(
       (l.committee_assignments ?? []).some(
         (a) => a.committee_id.toUpperCase() === code,
       ),
+    );
+  }
+
+  const has_more = docs.length > userLimit;
+  const results = docs.slice(0, userLimit);
+  return { results, has_more };
+}
+
+/**
+ * Query the historical legislators catalog (~12,230 members, 1789→present).
+ *
+ * Different shape from queryLegislators: no committee filter, no party
+ * filter on the top-level (party is per-term in this collection), but adds
+ * date-range filters that match against the chronological terms[] array.
+ *
+ * Most filters require post-fetch client-side filtering since Firestore
+ * can't index inside arrays of objects. We pull a generous window (5000
+ * default ceiling) and filter, then trim to the user's limit.
+ */
+export async function queryLegislatorsHistorical(
+  query: LegislatorHistoricalQuery,
+): Promise<QueryResult<LegislatorHistorical>> {
+  if (isStubMode()) {
+    return { results: [], has_more: false };
+  }
+
+  const db = await getLiveDb();
+
+  // Direct doc-ID lookup is fastest when bioguide_id is set.
+  if (query.bioguide_id) {
+    const doc = await db
+      .collection("legislators_historical")
+      .doc(query.bioguide_id)
+      .get();
+    if (!doc.exists) return { results: [], has_more: false };
+    return { results: [doc.data() as LegislatorHistorical], has_more: false };
+  }
+
+  const userLimit = query.limit ?? 50;
+
+  // Most filters need to look inside terms[] which Firestore can't index,
+  // so we fetch a wide window and filter client-side. 5000 docs ≈ 1/3 of the
+  // collection — covers any reasonable filter combination.
+  const FETCH_WINDOW = 5000;
+  const snap = await db
+    .collection("legislators_historical")
+    .limit(FETCH_WINDOW)
+    .get();
+  let docs = snap.docs.map((d) => d.data() as LegislatorHistorical);
+
+  if (query.member_name) {
+    const needle = query.member_name.toLowerCase();
+    docs = docs.filter((l) =>
+      (l.full_name ?? "").toLowerCase().includes(needle),
+    );
+  }
+
+  if (query.state) {
+    const stateUpper = query.state.toUpperCase();
+    docs = docs.filter((l) =>
+      (l.terms ?? []).some((t) => (t.state ?? "").toUpperCase() === stateUpper),
+    );
+  }
+
+  if (query.chamber) {
+    docs = docs.filter((l) =>
+      (l.terms ?? []).some((t) => t.chamber === query.chamber),
+    );
+  }
+
+  if (query.party) {
+    const partyLower = query.party.toLowerCase();
+    docs = docs.filter((l) =>
+      (l.terms ?? []).some(
+        (t) => (t.party ?? "").toLowerCase() === partyLower,
+      ),
+    );
+  }
+
+  // Date overlap filter — a member is "active" during the window if any term
+  // overlaps with the [since, until] range. Resolve active_year to since/until
+  // first if it's set.
+  let since = query.active_since;
+  let until = query.active_until;
+  if (query.active_year !== undefined) {
+    since = `${query.active_year}-01-01`;
+    until = `${query.active_year}-12-31`;
+  }
+  if (since || until) {
+    docs = docs.filter((l) =>
+      (l.terms ?? []).some((t) => {
+        // Term overlaps window if term.start ≤ until AND term.end ≥ since
+        if (since && t.end && t.end < since) return false;
+        if (until && t.start && t.start > until) return false;
+        return true;
+      }),
     );
   }
 
