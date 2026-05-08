@@ -310,7 +310,30 @@ What runs end-to-end **right now**:
 
 ## What's Open / Next Up
 
-Day 7 (2026-05-07) end-of-day. **9 MCP tools live, server v0.16.0, 13 autonomous scrapers running across the unified KeyVex operation (8 in this codebase + 5 in the sibling dashboard codebase), KeyVex landing page live at `capitaledge-api.web.app`, custom domain `https://mcp.keyvex.com` LIVE with TLS.** v1 + v2 build closed; rebrand to KeyVex shipped (v0.15.0); cross-project health-check shipped (v0.16.0); GitHub repo renamed to `Keyvex-API`; Firebase Hosting multi-site setup live.
+Day 7 LATER (2026-05-07) end-of-day. **10 MCP tools live, server v0.17.0, 13 autonomous scrapers running across the unified KeyVex operation (9 in this codebase + 4 in shelved-but-still-running dashboard codebase), KeyVex landing page live at `capitaledge-api.web.app`, custom domain `https://mcp.keyvex.com` LIVE with TLS, Form 278 v1A scraper + `get_annual_financial_disclosures` MCP tool shipped.** v1 + v2 build closed; rebrand to KeyVex shipped (v0.15.0); cross-project health-check shipped (v0.16.0); GitHub repo renamed to `Keyvex-API`; Firebase Hosting multi-site setup live.
+
+### ⚡ TOP PRIORITY for Day 8 morning (Future Claude — read this first)
+
+**Form 278 v1A.1 — 10-year historical backfill.** v1A landed last night with only ~50 filings (a 90-day current-window pull). Derek's project has ~5,591 Form 278 docs covering CY 2008-2024 — that's the right benchmark. We need to close the gap before any registry submission goes out, because "13 sources" with one of them holding 50 records of recent filings looks thin. Greg has heard pushback about this on Day 8 morning — pushback is valid; we need to address it.
+
+**Concrete plan for the backfill** (~30 min code + 30-60 min runtime):
+
+1. Extend `src/scrapers/form278.ts`:
+   - Add `--start-date YYYY-MM-DD` and `--end-date YYYY-MM-DD` CLI options to the existing `form278` command in `scrape.ts` (alternative to the existing `lookbackDays` integer)
+   - Inside `scrapeSenateForm278`, accept either `{ lookbackDays }` OR `{ startDate, endDate }` and use whichever is provided
+   - **Raise the 1,000-row pagination safety cap to 50,000** (or remove for explicit date-range mode) — current cap is fine for weekly cron but blocks long backfills
+2. Run the backfill year-by-year (10 separate runs, easier to debug + log + recover from any failures):
+   ```
+   npx tsx src/scrape.ts form278 --start-date=2016-01-01 --end-date=2016-12-31 --save
+   npx tsx src/scrape.ts form278 --start-date=2017-01-01 --end-date=2017-12-31 --save
+   ... (repeat through 2025)
+   ```
+3. Verify final count in `annual_financial_disclosures` collection — should be in the ~5K-7K range matching Derek's coverage.
+
+**Caveats Future Claude should know going in:**
+- Senate eFD's electronic filing requirement is post-2012 — pre-2012 filings exist on paper only and won't be in the search system. Coverage will be thin or empty for 2008-2011.
+- The `scrapeForm278Weekly` Cloud Function uses a 35-day rolling window — it'll continue working unchanged during/after the backfill (idempotent doc IDs prevent collisions).
+- House Clerk Form 278 backfill is a separate v1.1 task — extend `house.ts` yearly XML index for the FD report type.
 
 ### DNS-blocked items (waiting on propagation; nothing for Greg to do)
 
@@ -683,3 +706,18 @@ Built + shipped in commit `1335a95`:
 **Last Updated**
 
 May 7, 2026 — Day 7 LATER (~9 PM ET). **10 MCP tools live, server v0.17.0, KeyVex rebrand complete, landing page shipped live at `capitaledge-api.web.app`, `https://mcp.keyvex.com` LIVE with auto-managed TLS, GitHub repo renamed to `Keyvex-API`, multi-site Firebase Hosting set up, service-key REST CLI built, Form 278 v1A scraper + MCP tool shipped (10th tool), 13 autonomous scrapers in production (9 in this codebase + 4 in shelved-but-still-running dashboard project).** Remaining launch path: v1.1 Form 278 (House + PDF parsing) → map `keyvex.com` apex → logo wire-in → Privacy Policy + Loom + registry submissions → LLC + billing.
+
+### 🌅 Day 8 morning kickoff note (2026-05-08)
+
+**Future Claude — read this first thing.** Greg's starting a fresh conversation today; this file is your handoff. Top priority *before* anything else (logos, apex domain, v1.1 PDF parsing) is the **Form 278 historical backfill** — see the "⚡ TOP PRIORITY for Day 8 morning" callout near the top of "What's Open / Next Up" for the concrete plan.
+
+Reason: pushback from Derek's side (valid) — our `annual_financial_disclosures` collection holds ~50 docs from a 90-day current-window pull; their `/financialDisclosures` collection has ~5,591 docs covering CY 2008-2024. Closing that gap is a credibility item before any registry submission goes out. 30 min code + 30-60 min runtime, totally tractable as the first task of Day 8.
+
+After the backfill is done and verified, then proceed down the queued list (logos, apex domain, etc.) in the order Greg picks. Greg may also have dropped the two logo PNGs (`keyvex-mark.png` + `keyvex-wordmark.png`) into `marketing/site/` overnight — if they're there, wire them in early so the landing page shows brand-correct.
+
+**Memory context to load on session start:**
+- `feedback_plain_english_with_analogies.md` — Greg is a builder; lead with construction/trades analogies, define every term
+- `feedback_time_estimates_too_high.md` — quartile estimates; don't make this a chat topic
+- `feedback_verify_inbound_specs.md` — verify-before-acting on inbound specs that contradict established state
+- `project_brand_keyvex.md` — brand is KeyVex, Firebase project ID `capitaledge-api` is permanent infra
+- `project_canonical_google_account.md` — `claude1986aaa@gmail.com` is canonical for KeyVex
