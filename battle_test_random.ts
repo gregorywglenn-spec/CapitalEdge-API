@@ -98,20 +98,31 @@ const generators: Array<() => Query> = [
     };
   },
 
-  // Form 4 — by officer name substring
+  // Form 4 — by officer name substring (realistic CEO/company pairings)
   () => {
-    const ticker = rand(["AAPL", "TSLA", "MSFT", "NVDA"]);
-    const officer_name = rand(["Cook", "Musk", "Nadella", "Huang", "Pichai"]);
+    const pairings: Array<{ ticker: string; officer: string }> = [
+      { ticker: "AAPL", officer: "Cook" },
+      { ticker: "TSLA", officer: "Musk" },
+      { ticker: "MSFT", officer: "Nadella" },
+      { ticker: "NVDA", officer: "Huang" },
+      { ticker: "GOOGL", officer: "Pichai" },
+      { ticker: "META", officer: "Zuckerberg" },
+      { ticker: "AMZN", officer: "Jassy" },
+      { ticker: "JPM", officer: "Dimon" },
+      { ticker: "GS", officer: "Solomon" },
+      { ticker: "BLK", officer: "Fink" },
+    ];
+    const p = rand(pairings);
     return {
       tool: "get_insider_transactions",
       args: {
-        ticker,
-        officer_name,
+        ticker: p.ticker,
+        officer_name: p.officer,
         sort_by: "disclosure_date",
         sort_order: "desc",
         limit: 5,
       },
-      intent: `Find ${officer_name} trades at ${ticker}`,
+      intent: `Find ${p.officer} trades at ${p.ticker}`,
     };
   },
 

@@ -212,16 +212,27 @@ async function queryInsiderTransactionsLive(
   if (query.transaction_type) {
     q = q.where("transaction_type", "==", query.transaction_type);
   }
-  if (query.min_value !== undefined) {
-    q = q.where("total_value", ">=", query.min_value);
-  }
 
   const sortField = query.sort_by ?? "disclosure_date";
   const sortOrder = query.sort_order ?? "desc";
 
-  // Date-range filters apply to the active sort field
+  // Firestore allows AT MOST ONE range filter per query (across all .where
+  // calls combined with orderBy). When the agent passes both since/until
+  // (range on sortField) AND min_value (range on total_value), we have to
+  // defer one to client-side. since/until is more selective and aligns
+  // with the orderBy, so it stays on the server. min_value is applied
+  // client-side after fetch.
   if (query.since) q = q.where(sortField, ">=", query.since);
   if (query.until) q = q.where(sortField, "<=", query.until);
+
+  // min_value applied as a server-side filter ONLY when there's no other
+  // range filter on a different field. Otherwise defer to client-side.
+  const hasOtherRange = !!(query.since || query.until);
+  const applyMinValueClientSide =
+    hasOtherRange && query.min_value !== undefined;
+  if (query.min_value !== undefined && !applyMinValueClientSide) {
+    q = q.where("total_value", ">=", query.min_value);
+  }
 
   q = q.orderBy(sortField, sortOrder);
 
@@ -234,7 +245,9 @@ async function queryInsiderTransactionsLive(
   // is enough for v1's data volume (~hundreds of insider records) and
   // protects against runaway memory on later growth. See v1.1 polish item
   // for moving substring search to Firestore-side via tokenized indexes.
-  const fetchLimit = query.officer_name ? 5000 : userLimit + 1;
+  // Same wider window when min_value is deferred to client-side.
+  const needsClientFilter = query.officer_name || applyMinValueClientSide;
+  const fetchLimit = needsClientFilter ? 5000 : userLimit + 1;
   q = q.limit(fetchLimit);
 
   const snap = await q.get();
@@ -245,6 +258,10 @@ async function queryInsiderTransactionsLive(
     docs = docs.filter((t) =>
       (t.officer_name ?? "").toLowerCase().includes(needle),
     );
+  }
+  if (applyMinValueClientSide && query.min_value !== undefined) {
+    const minValue = query.min_value;
+    docs = docs.filter((t) => (t.total_value ?? 0) >= minValue);
   }
 
   const has_more = docs.length > userLimit;
@@ -499,15 +516,27 @@ export async function queryForm144Filings(
   if (query.company_cik) {
     q = q.where("company_cik", "==", query.company_cik);
   }
-  if (query.min_value !== undefined) {
-    q = q.where("aggregate_market_value", ">=", query.min_value);
-  }
 
   const sortField = query.sort_by ?? "filing_date";
   const sortOrder = query.sort_order ?? "desc";
 
+  // Firestore allows AT MOST ONE range filter per query (across all .where
+  // calls combined with orderBy). When the agent passes both since/until
+  // (range on sortField) AND min_value (range on aggregate_market_value),
+  // we have to defer one to client-side. since/until is more selective and
+  // aligns with the orderBy, so it stays on the server. min_value is
+  // applied client-side after fetch.
   if (query.since) q = q.where(sortField, ">=", query.since);
   if (query.until) q = q.where(sortField, "<=", query.until);
+
+  // min_value applied as a server-side filter ONLY when there's no other
+  // range filter on a different field. Otherwise defer to client-side.
+  const hasOtherRange = !!(query.since || query.until);
+  const applyMinValueClientSide =
+    hasOtherRange && query.min_value !== undefined;
+  if (query.min_value !== undefined && !applyMinValueClientSide) {
+    q = q.where("aggregate_market_value", ">=", query.min_value);
+  }
 
   q = q.orderBy(sortField, sortOrder);
 
@@ -515,8 +544,10 @@ export async function queryForm144Filings(
 
   // Same substring-filter consideration as the other collections: when
   // filer_name is set, pull a much larger Firestore window so the client-side
-  // filter sees the full universe.
-  const fetchLimit = query.filer_name ? 5000 : userLimit + 1;
+  // filter sees the full universe. Same wider window when min_value is
+  // deferred to client-side.
+  const needsClientFilter = query.filer_name || applyMinValueClientSide;
+  const fetchLimit = needsClientFilter ? 5000 : userLimit + 1;
   q = q.limit(fetchLimit);
 
   const snap = await q.get();
@@ -527,6 +558,10 @@ export async function queryForm144Filings(
     docs = docs.filter((f) =>
       (f.filer_name ?? "").toLowerCase().includes(needle),
     );
+  }
+  if (applyMinValueClientSide && query.min_value !== undefined) {
+    const minValue = query.min_value;
+    docs = docs.filter((f) => (f.aggregate_market_value ?? 0) >= minValue);
   }
 
   const has_more = docs.length > userLimit;
@@ -688,15 +723,31 @@ export async function queryActivistOwnership(
   if (query.filing_type) {
     q = q.where("filing_type", "==", query.filing_type);
   }
-  if (query.min_percent_of_class !== undefined) {
-    q = q.where("percent_of_class", ">=", query.min_percent_of_class);
-  }
 
   const sortField = query.sort_by ?? "filing_date";
   const sortOrder = query.sort_order ?? "desc";
 
+  // Firestore allows AT MOST ONE range filter per query (across all .where
+  // calls combined with orderBy). When the agent passes both since/until
+  // (range on sortField) AND min_percent_of_class (range on
+  // percent_of_class), we have to defer one to client-side. since/until is
+  // more selective and aligns with the orderBy, so it stays on the server.
+  // min_percent_of_class is applied client-side after fetch.
   if (query.since) q = q.where(sortField, ">=", query.since);
   if (query.until) q = q.where(sortField, "<=", query.until);
+
+  // min_percent_of_class applied as a server-side filter ONLY when there's
+  // no other range filter on a different field. Otherwise defer to
+  // client-side.
+  const hasOtherRange = !!(query.since || query.until);
+  const applyMinPercentClientSide =
+    hasOtherRange && query.min_percent_of_class !== undefined;
+  if (
+    query.min_percent_of_class !== undefined &&
+    !applyMinPercentClientSide
+  ) {
+    q = q.where("percent_of_class", ">=", query.min_percent_of_class);
+  }
 
   q = q.orderBy(sortField, sortOrder);
 
@@ -704,8 +755,10 @@ export async function queryActivistOwnership(
 
   // Same substring-filter consideration as the other collections: when
   // filer_name is set, pull a much larger Firestore window so the client-side
-  // filter sees the full universe.
-  const fetchLimit = query.filer_name ? 5000 : userLimit + 1;
+  // filter sees the full universe. Same wider window when
+  // min_percent_of_class is deferred to client-side.
+  const needsClientFilter = query.filer_name || applyMinPercentClientSide;
+  const fetchLimit = needsClientFilter ? 5000 : userLimit + 1;
   q = q.limit(fetchLimit);
 
   const snap = await q.get();
@@ -716,6 +769,13 @@ export async function queryActivistOwnership(
     docs = docs.filter((f) =>
       (f.filer_name ?? "").toLowerCase().includes(needle),
     );
+  }
+  if (
+    applyMinPercentClientSide &&
+    query.min_percent_of_class !== undefined
+  ) {
+    const minPct = query.min_percent_of_class;
+    docs = docs.filter((f) => (f.percent_of_class ?? 0) >= minPct);
   }
 
   const has_more = docs.length > userLimit;
@@ -779,24 +839,36 @@ export async function queryFederalContractAwards(
   }
   if (query.naics_code) q = q.where("naics_code", "==", query.naics_code);
   if (query.psc_code) q = q.where("psc_code", "==", query.psc_code);
-  if (query.min_amount !== undefined) {
-    q = q.where("award_amount", ">=", query.min_amount);
-  }
 
   const sortField = query.sort_by ?? "last_modified_date";
   const sortOrder = query.sort_order ?? "desc";
 
+  // Firestore allows AT MOST ONE range filter per query (across all .where
+  // calls combined with orderBy). When the agent passes both since/until
+  // (range on sortField) AND min_amount (range on award_amount), we have
+  // to defer one to client-side. since/until is more selective and aligns
+  // with the orderBy, so it stays on the server. min_amount is applied
+  // client-side after fetch.
   if (query.since) q = q.where(sortField, ">=", query.since);
   if (query.until) q = q.where(sortField, "<=", query.until);
+
+  // min_amount applied as a server-side filter ONLY when there's no other
+  // range filter on a different field. Otherwise defer to client-side.
+  const hasOtherRange = !!(query.since || query.until);
+  const applyMinAmountClientSide =
+    hasOtherRange && query.min_amount !== undefined;
+  if (query.min_amount !== undefined && !applyMinAmountClientSide) {
+    q = q.where("award_amount", ">=", query.min_amount);
+  }
 
   q = q.orderBy(sortField, sortOrder);
 
   const userLimit = query.limit ?? 50;
 
-  // Same substring-filter consideration as the other collections: when
-  // recipient_name (substring) is set, pull a much larger Firestore window
-  // so the client-side filter sees the full universe.
-  const fetchLimit = query.recipient_name ? 5000 : userLimit + 1;
+  // Wider fetch window when client-side filtering kicks in (substring on
+  // recipient_name or min_amount-after-since/until).
+  const needsClientFilter = query.recipient_name || applyMinAmountClientSide;
+  const fetchLimit = needsClientFilter ? 5000 : userLimit + 1;
   q = q.limit(fetchLimit);
 
   const snap = await q.get();
@@ -807,6 +879,10 @@ export async function queryFederalContractAwards(
     docs = docs.filter((c) =>
       (c.recipient_name ?? "").toLowerCase().includes(needle),
     );
+  }
+  if (applyMinAmountClientSide && query.min_amount !== undefined) {
+    const minAmount = query.min_amount;
+    docs = docs.filter((c) => (c.award_amount ?? 0) >= minAmount);
   }
 
   const has_more = docs.length > userLimit;
@@ -869,9 +945,6 @@ export async function queryLobbyingFilings(
   if (query.filing_period) {
     q = q.where("filing_period", "==", query.filing_period);
   }
-  if (query.min_income !== undefined) {
-    q = q.where("income", ">=", query.min_income);
-  }
   // OR-semantic match across general_issue_codes (max 30 codes per Firestore).
   if (query.general_issue_codes && query.general_issue_codes.length > 0) {
     q = q.where(
@@ -884,8 +957,23 @@ export async function queryLobbyingFilings(
   const sortField = query.sort_by ?? "dt_posted";
   const sortOrder = query.sort_order ?? "desc";
 
+  // Firestore allows AT MOST ONE range filter per query (across all .where
+  // calls combined with orderBy). When the agent passes both since/until
+  // (range on sortField) AND min_income (range on income), we have to defer
+  // one to client-side. since/until is more selective and aligns with the
+  // orderBy, so it stays on the server. min_income is applied client-side
+  // after fetch.
   if (query.since) q = q.where(sortField, ">=", query.since);
   if (query.until) q = q.where(sortField, "<=", query.until);
+
+  // min_income applied as a server-side filter ONLY when there's no other
+  // range filter on a different field. Otherwise defer to client-side.
+  const hasOtherRange = !!(query.since || query.until);
+  const applyMinIncomeClientSide =
+    hasOtherRange && query.min_income !== undefined;
+  if (query.min_income !== undefined && !applyMinIncomeClientSide) {
+    q = q.where("income", ">=", query.min_income);
+  }
 
   q = q.orderBy(sortField, sortOrder);
 
@@ -900,8 +988,12 @@ export async function queryLobbyingFilings(
   // EXXONMOBIL CORPORATION record was older than the 5000th most-recent
   // dt_posted. Tradeoff: client-side substring queries are slower (downloads
   // ~all records to filter) but correctness > speed for substring queries.
+  // Same wider window when min_income is deferred to client-side.
   const needsClientSideFilter =
-    query.registrant_name || query.client_name || query.government_entity;
+    query.registrant_name ||
+    query.client_name ||
+    query.government_entity ||
+    applyMinIncomeClientSide;
   const fetchLimit = needsClientSideFilter ? 100000 : userLimit + 1;
   q = q.limit(fetchLimit);
 
@@ -927,6 +1019,10 @@ export async function queryLobbyingFilings(
         g.toLowerCase().includes(needle),
       ),
     );
+  }
+  if (applyMinIncomeClientSide && query.min_income !== undefined) {
+    const minIncome = query.min_income;
+    docs = docs.filter((f) => (f.income ?? 0) >= minIncome);
   }
 
   const has_more = docs.length > userLimit;
