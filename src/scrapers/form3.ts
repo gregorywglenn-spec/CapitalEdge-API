@@ -539,7 +539,9 @@ interface SubmissionsResponse {
  */
 export async function scrapeForm3ByTicker(
   ticker: string,
-  maxFilings = 20,
+  maxFilings = 200,
+  /** ISO YYYY-MM-DD lower bound. Defaults to 5 years ago. */
+  sinceDate?: string,
 ): Promise<Form3Holding[]> {
   const info = await getTickerInfo(ticker);
   if (!info) {
@@ -547,30 +549,47 @@ export async function scrapeForm3ByTicker(
   }
   console.error(`[form3] ${ticker} = ${info.name} (CIK ${info.cik})`);
 
-  const subs = (await fetchJson(
-    `${CONFIG.BASE_URL}/submissions/CIK${info.cik}.json`,
-  )) as SubmissionsResponse;
-  const recent = subs.filings?.recent;
-  if (!recent) return [];
+  // Form 3s are filed by INSIDERS, not by the issuer company. They don't
+  // appear in the company's submissions feed. Use FTS with `ciks=` filter
+  // to find all Form 3s where this issuer's CIK is in the cik array (which
+  // includes both filer and issuer per FTS indexing).
+  const endStr = new Date().toISOString().split("T")[0]!;
+  const startStr =
+    sinceDate ??
+    new Date(Date.now() - 5 * 365 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .split("T")[0]!;
+  const url = `${CONFIG.SEARCH_URL}?q=&forms=3&ciks=${info.cik}&dateRange=custom&startdt=${startStr}&enddt=${endStr}`;
+  const data = (await fetchJson(url)) as {
+    hits?: { hits?: EdgarSearchHit[]; total?: { value?: number } };
+  };
+  const hits = data.hits?.hits ?? [];
+  const total = data.hits?.total?.value ?? hits.length;
+  console.error(
+    `[form3] FTS returned ${hits.length}/${total} Form 3 filings for ${ticker} since ${startStr}`,
+  );
 
   const filings: FilingMeta[] = [];
-  for (let i = 0; i < recent.form.length && filings.length < maxFilings; i++) {
-    const form = recent.form[i];
-    if (form !== "3" && form !== "3/A") continue;
-    const accession = recent.accessionNumber[i];
-    const filedAt = recent.filingDate[i];
-    if (!accession || !filedAt) continue;
-    const accessionNoSlash = formatAccession(accession);
-    const primaryDoc = rawXmlPath(recent.primaryDocument?.[i] ?? "");
+  for (const hit of hits.slice(0, maxFilings)) {
+    const src = hit._source;
+    if (!src) continue;
+    const filerCikRaw =
+      (src.ciks ?? [])
+        .map((c) => c.replace(/^0+/, ""))
+        .find((c) => c !== info.cikRaw) ?? info.cikRaw;
+    const accession = src.adsh ?? "";
+    const filedAt = src.file_date ?? "";
+    const filename = rawXmlPath((hit._id ?? "").split(":")[1] ?? "");
+    if (!accession || !filerCikRaw || !filename) continue;
     filings.push({
       accession,
       companyCik: info.cikRaw,
       filedAt,
-      url: `${CONFIG.EDGAR_URL}/Archives/edgar/data/${info.cikRaw}/${accessionNoSlash}/${primaryDoc}`,
+      url: `${CONFIG.EDGAR_URL}/Archives/edgar/data/${filerCikRaw}/${formatAccession(accession)}/${filename}`,
     });
   }
 
-  console.error(`[form3] Found ${filings.length} Form 3 filings`);
+  console.error(`[form3] Fetching XML for ${filings.length} filings`);
 
   const allHoldings: Form3Holding[] = [];
   for (const filing of filings) {
@@ -578,9 +597,6 @@ export async function scrapeForm3ByTicker(
       const xmlText = await fetchText(filing.url);
       const holdings = parseForm3Xml(xmlText, filing);
       allHoldings.push(...holdings);
-      console.error(
-        `[form3]   ${filing.accession}: ${holdings.length} holdings`,
-      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[form3]   ${filing.accession}: SKIP — ${msg}`);

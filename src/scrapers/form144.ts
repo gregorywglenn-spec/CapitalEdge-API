@@ -469,7 +469,9 @@ interface SubmissionsResponse {
  */
 export async function scrapeForm144ByTicker(
   ticker: string,
-  maxFilings = 20,
+  maxFilings = 200,
+  /** ISO YYYY-MM-DD lower bound. Defaults to 5 years ago. */
+  sinceDate?: string,
 ): Promise<Form144Filing[]> {
   const info = await getTickerInfo(ticker);
   if (!info) {
@@ -477,30 +479,45 @@ export async function scrapeForm144ByTicker(
   }
   console.error(`[form144] ${ticker} = ${info.name} (CIK ${info.cik})`);
 
-  const subs = (await fetchJson(
-    `${CONFIG.BASE_URL}/submissions/CIK${info.cik}.json`,
-  )) as SubmissionsResponse;
-  const recent = subs.filings?.recent;
-  if (!recent) return [];
+  // Form 144s are filed by INSIDERS, not the issuer. Use FTS with ciks=
+  // filter — same architectural reason as Form 4 / Form 3.
+  const endStr = new Date().toISOString().split("T")[0]!;
+  const startStr =
+    sinceDate ??
+    new Date(Date.now() - 5 * 365 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .split("T")[0]!;
+  const url = `${CONFIG.SEARCH_URL}?q=&forms=144&ciks=${info.cik}&dateRange=custom&startdt=${startStr}&enddt=${endStr}`;
+  const data = (await fetchJson(url)) as {
+    hits?: { hits?: EdgarSearchHit[]; total?: { value?: number } };
+  };
+  const hits = data.hits?.hits ?? [];
+  const total = data.hits?.total?.value ?? hits.length;
+  console.error(
+    `[form144] FTS returned ${hits.length}/${total} Form 144 filings for ${ticker} since ${startStr}`,
+  );
 
   const filings: FilingMeta[] = [];
-  for (let i = 0; i < recent.form.length && filings.length < maxFilings; i++) {
-    const form = recent.form[i];
-    if (form !== "144" && form !== "144/A") continue;
-    const accession = recent.accessionNumber[i];
-    const filedAt = recent.filingDate[i];
-    if (!accession || !filedAt) continue;
-    const accessionNoSlash = formatAccession(accession);
-    const primaryDoc = rawXmlPath(recent.primaryDocument?.[i] ?? "");
+  for (const hit of hits.slice(0, maxFilings)) {
+    const src = hit._source;
+    if (!src) continue;
+    const filerCikRaw =
+      (src.ciks ?? [])
+        .map((c) => c.replace(/^0+/, ""))
+        .find((c) => c !== info.cikRaw) ?? info.cikRaw;
+    const accession = src.adsh ?? "";
+    const filedAt = src.file_date ?? "";
+    const filename = rawXmlPath((hit._id ?? "").split(":")[1] ?? "");
+    if (!accession || !filerCikRaw || !filename) continue;
     filings.push({
       accession,
       companyCik: info.cikRaw,
       filedAt,
-      url: `${CONFIG.EDGAR_URL}/Archives/edgar/data/${info.cikRaw}/${accessionNoSlash}/${primaryDoc}`,
+      url: `${CONFIG.EDGAR_URL}/Archives/edgar/data/${filerCikRaw}/${formatAccession(accession)}/${filename}`,
     });
   }
 
-  console.error(`[form144] Found ${filings.length} Form 144 filings`);
+  console.error(`[form144] Fetching XML for ${filings.length} filings`);
 
   const allFilings: Form144Filing[] = [];
   for (const filing of filings) {

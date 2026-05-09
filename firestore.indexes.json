@@ -306,6 +306,214 @@
         { "fieldPath": "report_type", "order": "ASCENDING" },
         { "fieldPath": "filing_date", "order": "DESCENDING" }
       ]
+    },
+
+    {
+      "collectionGroup": "insider_trades",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ticker", "order": "ASCENDING" },
+        { "fieldPath": "transaction_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "insider_trades",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ticker", "order": "ASCENDING" },
+        { "fieldPath": "total_value", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "insider_trades",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "company_cik", "order": "ASCENDING" },
+        { "fieldPath": "total_value", "order": "DESCENDING" }
+      ]
+    },
+
+    {
+      "collectionGroup": "institutional_holdings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ticker", "order": "ASCENDING" },
+        { "fieldPath": "shares_held", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "institutional_holdings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ticker", "order": "ASCENDING" },
+        { "fieldPath": "shares_change_pct", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "institutional_holdings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "fund_cik", "order": "ASCENDING" },
+        { "fieldPath": "market_value", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "institutional_holdings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "quarter", "order": "ASCENDING" },
+        { "fieldPath": "market_value", "order": "DESCENDING" }
+      ]
+    },
+
+    {
+      "collectionGroup": "congressional_trades",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ticker", "order": "ASCENDING" },
+        { "fieldPath": "transaction_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "congressional_trades",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bioguide_id", "order": "ASCENDING" },
+        { "fieldPath": "disclosure_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "congressional_trades",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "chamber", "order": "ASCENDING" },
+        { "fieldPath": "disclosure_date", "order": "DESCENDING" }
+      ]
+    },
+
+    {
+      "collectionGroup": "activist_ownership",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ticker", "order": "ASCENDING" },
+        { "fieldPath": "event_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "activist_ownership",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ticker", "order": "ASCENDING" },
+        { "fieldPath": "shares_owned", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "activist_ownership",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "is_activist", "order": "ASCENDING" },
+        { "fieldPath": "event_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "activist_ownership",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "is_activist", "order": "ASCENDING" },
+        { "fieldPath": "shares_owned", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "activist_ownership",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "company_cik", "order": "ASCENDING" },
+        { "fieldPath": "percent_of_class", "order": "DESCENDING" }
+      ]
+    },
+
+    {
+      "collectionGroup": "initial_ownership_baselines",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ticker", "order": "ASCENDING" },
+        { "fieldPath": "shares_owned", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "initial_ownership_baselines",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "company_cik", "order": "ASCENDING" },
+        { "fieldPath": "shares_owned", "order": "DESCENDING" }
+      ]
+    },
+
+    {
+      "collectionGroup": "planned_insider_sales",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "company_cik", "order": "ASCENDING" },
+        { "fieldPath": "filing_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "planned_insider_sales",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "company_cik", "order": "ASCENDING" },
+        { "fieldPath": "aggregate_market_value", "order": "DESCENDING" }
+      ]
+    },
+
+    {
+      "collectionGroup": "material_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ticker", "order": "ASCENDING" },
+        { "fieldPath": "period_of_report", "order": "DESCENDING" }
+      ]
+    },
+
+    {
+      "collectionGroup": "federal_contracts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "recipient_uei", "order": "ASCENDING" },
+        { "fieldPath": "award_amount", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "federal_contracts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "recipient_uei", "order": "ASCENDING" },
+        { "fieldPath": "start_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "federal_contracts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "recipient_uei", "order": "ASCENDING" },
+        { "fieldPath": "total_outlays", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "federal_contracts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "naics_code", "order": "ASCENDING" },
+        { "fieldPath": "award_amount", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "federal_contracts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "psc_code", "order": "ASCENDING" },
+        { "fieldPath": "last_modified_date", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

@@ -268,7 +268,9 @@ interface SubmissionsResponse {
  */
 export async function scrapeForm4ByTicker(
   ticker: string,
-  maxFilings = 20,
+  maxFilings = 200,
+  /** ISO YYYY-MM-DD lower bound. Defaults to 5 years ago. */
+  sinceDate?: string,
 ): Promise<InsiderTransaction[]> {
   const info = await getTickerInfo(ticker);
   if (!info) {
@@ -276,30 +278,53 @@ export async function scrapeForm4ByTicker(
   }
   console.error(`[form4] ${ticker} = ${info.name} (CIK ${info.cik})`);
 
-  const subs = (await fetchJson(
-    `${CONFIG.BASE_URL}/submissions/CIK${info.cik}.json`,
-  )) as SubmissionsResponse;
-  const recent = subs.filings?.recent;
-  if (!recent) return [];
+  // Form 4s are filed by INSIDERS (officers/directors/10%+ holders), NOT by
+  // the issuer company. They do NOT appear in the company's submissions feed.
+  // EDGAR's full-text-search endpoint accepts a `ciks=` filter that matches
+  // ANY cik in the filing's cik array — for Form 4, this includes both filer
+  // (insider) and issuer (company) CIKs, so filtering by issuer CIK returns
+  // every Form 4 ABOUT this company regardless of which insider filed it.
+  const endStr = new Date().toISOString().split("T")[0]!;
+  const startStr =
+    sinceDate ??
+    new Date(Date.now() - 5 * 365 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .split("T")[0]!;
+  const url = `${CONFIG.SEARCH_URL}?q=&forms=4&ciks=${info.cik}&dateRange=custom&startdt=${startStr}&enddt=${endStr}`;
+  const data = (await fetchJson(url)) as {
+    hits?: { hits?: EdgarSearchHit[]; total?: { value?: number } };
+  };
+  const hits = data.hits?.hits ?? [];
+  const total = data.hits?.total?.value ?? hits.length;
+  console.error(
+    `[form4] FTS returned ${hits.length}/${total} Form 4 filings for ${ticker} since ${startStr}`,
+  );
 
   const filings: FilingMeta[] = [];
-  for (let i = 0; i < recent.form.length && filings.length < maxFilings; i++) {
-    const form = recent.form[i];
-    if (form !== "4" && form !== "4/A") continue;
-    const accession = recent.accessionNumber[i];
-    const filedAt = recent.filingDate[i];
-    if (!accession || !filedAt) continue;
-    const accessionNoSlash = formatAccession(accession);
-    const primaryDoc = recent.primaryDocument?.[i] ?? "";
+  for (const hit of hits.slice(0, maxFilings)) {
+    const src = hit._source;
+    if (!src) continue;
+    // ciks array order varies (filer first, issuer second OR reversed). Use
+    // whichever isn't our issuer CIK as the filer's archive directory.
+    const issuerCikPadded = info.cik;
+    const filerCikRaw =
+      (src.ciks ?? [])
+        .map((c) => c.replace(/^0+/, ""))
+        .find((c) => c !== info.cikRaw) ?? info.cikRaw;
+    const accession = src.adsh ?? "";
+    const filedAt = src.file_date ?? "";
+    const filename = (hit._id ?? "").split(":")[1] ?? "";
+    if (!accession || !filerCikRaw || !filename) continue;
+    void issuerCikPadded; // not currently used but kept for future cross-checks
     filings.push({
       accession,
       companyCik: info.cikRaw,
       filedAt,
-      url: `${CONFIG.EDGAR_URL}/Archives/edgar/data/${info.cikRaw}/${accessionNoSlash}/${primaryDoc}`,
+      url: `${CONFIG.EDGAR_URL}/Archives/edgar/data/${filerCikRaw}/${formatAccession(accession)}/${filename}`,
     });
   }
 
-  console.error(`[form4] Found ${filings.length} Form 4 filings`);
+  console.error(`[form4] Fetching XML for ${filings.length} filings`);
 
   const allTrades: InsiderTransaction[] = [];
   for (const filing of filings) {
@@ -307,7 +332,6 @@ export async function scrapeForm4ByTicker(
       const xmlText = await fetchText(filing.url);
       const trades = parseForm4Xml(xmlText, filing);
       allTrades.push(...trades);
-      console.error(`[form4]   ${filing.accession}: ${trades.length} trades`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[form4]   ${filing.accession}: SKIP — ${msg}`);
