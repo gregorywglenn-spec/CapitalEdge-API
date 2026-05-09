@@ -310,6 +310,14 @@ function normalizeLegislator(
     raw.name?.official_full ??
     [raw.name?.first, raw.name?.middle, raw.name?.last].filter((s) => s).join(" ");
 
+  // Full chronological term history for this current member. Same parser
+  // as historical legislators. Critical for chamber-switchers (Jim Banks,
+  // Mitt Romney, Bob Casey, etc.) whose prior chamber service would
+  // otherwise be invisible from a current-legislator query.
+  const fullTerms = (raw.terms ?? [])
+    .map(normalizeTerm)
+    .filter((t): t is HistoricalTerm => t !== null);
+
   return {
     bioguide_id: bioguide,
     full_name: fullName,
@@ -332,6 +340,7 @@ function normalizeLegislator(
     social: extractSocial(raw.social),
     contact: extractContact(term),
     committee_assignments: committeeAssignments,
+    terms: fullTerms,
   };
 }
 

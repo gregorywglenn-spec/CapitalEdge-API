@@ -459,8 +459,10 @@ async function fetchPtrList(
  *   8: Comment (optional)
  *
  * Filters applied:
- *   - Only Stock and Stock Option asset types (drops bonds, mutual funds,
- *     real estate, crypto since v1 tool surface is equity-focused)
+ *   - Drops rows with NO identifying info (no asset_name, no ticker, no
+ *     recognized equity asset_type). Keeps muni bonds, treasuries, LPs,
+ *     mutual funds, and other non-equity rows when they have an
+ *     asset_name (the source's own identification).
  *   - Only Purchase / Sale transaction types (drops Exchange, etc.)
  */
 /**
@@ -509,10 +511,16 @@ export function parseSenatePtr(
     const amountRange = cells[7] ?? "";
     const comment = cells[8] ?? "";
 
-    // Equity-only filter for v1
+    // Drop rows with no identifying info at all. Previously this filter
+    // also dropped non-equity rows without tickers — losing muni/treasury/LP
+    // coverage. Now we keep any row that has at least an asset_name OR a
+    // ticker OR a recognized equity asset_type. Agents querying for tickers
+    // naturally won't see asset_name-only rows; agents asking "what bonds
+    // did this senator buy?" finally get an answer.
     if (
       !["Stock", "Stock Option", "OP"].includes(assetType) &&
-      !ticker
+      !ticker &&
+      !assetName.trim()
     ) {
       return;
     }
@@ -529,7 +537,7 @@ export function parseSenatePtr(
       id: `senate-${meta.ptrId}-${i}`,
       ticker,
       asset_name: assetName,
-      asset_type: assetType || "Stock",
+      asset_type: assetType || "",
       member_name: `${meta.firstName} ${meta.lastName}`.trim(),
       member_first: meta.firstName,
       member_last: meta.lastName,

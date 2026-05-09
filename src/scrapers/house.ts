@@ -483,7 +483,7 @@ export function parseHousePtrText(
       id: `house-${meta.doc_id}-${trades.length + 1}`,
       ticker: ticker.toUpperCase(),
       asset_name: assetName,
-      asset_type: assetType || "Stock",
+      asset_type: assetType || "",
       member_name: `${meta.first} ${meta.last}`.trim(),
       member_first: meta.first,
       member_last: meta.last,

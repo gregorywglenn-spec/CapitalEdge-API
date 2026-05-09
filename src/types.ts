@@ -524,6 +524,17 @@ export interface Legislator {
   contact: CurrentTermContact;
   /** All committees + subcommittees this legislator currently sits on. */
   committee_assignments: CommitteeAssignment[];
+  /**
+   * Full chronological term history (oldest → newest). Same shape as the
+   * historical-legislator HistoricalTerm type. Critical for chamber-switchers
+   * — Jim Banks (House IN-3 2017→2025, Senate IN 2025→) lived in the House
+   * for 4 terms before becoming a Senator; without `terms[]` his House
+   * service would be invisible from a current-legislator query.
+   *
+   * For non-chamber-switchers this is just a chronological list of their
+   * re-elections (most members; ~530 of 536 currents).
+   */
+  terms: HistoricalTerm[];
 }
 
 /**
