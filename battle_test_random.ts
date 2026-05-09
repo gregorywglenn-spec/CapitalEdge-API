@@ -422,6 +422,171 @@ const generators: Array<() => Query> = [
       intent: `Form 278 disclosures from ${chamber ?? "any chamber"} for ${filing_year}`,
     };
   },
+
+  // Form 278 — biggest by member name substring
+  () => {
+    const member_name = rand(FAMOUS_NAMES);
+    return {
+      tool: "get_annual_financial_disclosures",
+      args: { member_name, limit: 5 },
+      intent: `Net-worth filings for ${member_name}`,
+    };
+  },
+
+  // 13D — concentrated activist (high % of class)
+  () => {
+    const min_percent_of_class = rand([5, 10, 25, 50]);
+    return {
+      tool: "get_activist_stakes",
+      args: {
+        is_activist: true,
+        min_percent_of_class,
+        sort_by: "percent_of_class",
+        sort_order: "desc",
+        limit: 10,
+      },
+      intent: `Activist stakes ≥${min_percent_of_class}% of class`,
+    };
+  },
+
+  // Real-world filer — BlackRock/Vanguard 13G hunting
+  () => {
+    const filer_name = rand(["BlackRock", "Vanguard", "State Street", "Pershing Square", "Elliott", "ValueAct"]);
+    return {
+      tool: "get_activist_stakes",
+      args: {
+        filer_name,
+        sort_by: "percent_of_class",
+        sort_order: "desc",
+        limit: 10,
+      },
+      intent: `${filer_name} 5%+ stakes`,
+    };
+  },
+
+  // Insider buying signal — rare but high-signal
+  () => {
+    return {
+      tool: "get_insider_transactions",
+      args: {
+        transaction_type: "buy",
+        min_value: rand([100000, 500000, 1000000]),
+        sort_by: "total_value",
+        sort_order: "desc",
+        limit: 10,
+      },
+      intent: "Biggest insider buys (any company, any insider)",
+    };
+  },
+
+  // Realistic CEO 10b5-1 plan tracker — Form 144 by big-cap ticker
+  () => {
+    const ticker = rand(["AAPL", "MSFT", "NVDA", "META", "AMZN", "GOOGL", "TSLA"]);
+    return {
+      tool: "get_planned_insider_sales",
+      args: {
+        ticker,
+        min_value: 1000000,
+        sort_by: "filing_date",
+        sort_order: "desc",
+        limit: 10,
+      },
+      intent: `${ticker} planned-sale notices ≥$1M`,
+    };
+  },
+
+  // 8-K — bankruptcy / restructuring (item 1.03 == receivership)
+  () => {
+    return {
+      tool: "get_material_events",
+      args: {
+        item_codes: ["1.03"],
+        sort_by: "filing_date",
+        sort_order: "desc",
+        limit: 5,
+      },
+      intent: "Recent bankruptcies / receiverships (item 1.03)",
+    };
+  },
+
+  // 8-K — earnings preview (item 2.02 == results of operations)
+  () => {
+    const ticker = rand(ALL_TICKERS);
+    return {
+      tool: "get_material_events",
+      args: {
+        ticker,
+        item_codes: ["2.02", "7.01"],
+        sort_by: "filing_date",
+        sort_order: "desc",
+        limit: 5,
+      },
+      intent: `${ticker} earnings & disclosure 8-Ks`,
+    };
+  },
+
+  // Lobbying — by registrant (the firm hired)
+  () => {
+    const registrant_name = rand(["Akin Gump", "Brownstein Hyatt", "BGR Group", "K&L Gates", "Squire Patton", "Holland & Knight"]);
+    return {
+      tool: "get_lobbying_filings",
+      args: {
+        registrant_name,
+        sort_by: "income",
+        sort_order: "desc",
+        limit: 10,
+      },
+      intent: `${registrant_name} top filings by income`,
+    };
+  },
+
+  // Federal contracts by agency
+  () => {
+    const awarding_agency = rand([
+      "DEPARTMENT OF DEFENSE",
+      "DEPARTMENT OF VETERANS AFFAIRS",
+      "DEPARTMENT OF HEALTH AND HUMAN SERVICES",
+      "DEPARTMENT OF HOMELAND SECURITY",
+      "GENERAL SERVICES ADMINISTRATION",
+    ]);
+    return {
+      tool: "get_federal_contracts",
+      args: {
+        awarding_agency,
+        min_amount: 10000000,
+        sort_by: "award_amount",
+        sort_order: "desc",
+        limit: 10,
+      },
+      intent: `Top contracts from ${awarding_agency.split(" OF ").pop() ?? awarding_agency} ≥$10M`,
+    };
+  },
+
+  // Edge case: very recent window (last 7 days, broad)
+  () => {
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10);
+    return {
+      tool: "get_congressional_trades",
+      args: {
+        since,
+        sort_by: "disclosure_date",
+        sort_order: "desc",
+        limit: 20,
+      },
+      intent: `All congressional trades disclosed in the last 7 days (since ${since})`,
+    };
+  },
+
+  // Edge case: empty args (just sort + limit) — wide-open scan
+  () => {
+    return {
+      tool: "get_planned_insider_sales",
+      args: { sort_by: "aggregate_market_value", sort_order: "desc", limit: 5 },
+      intent: "All-time biggest planned insider sales (no filters)",
+    };
+  },
 ];
 
 interface Result {
@@ -496,9 +661,113 @@ function summarizeSample(s: unknown): string {
   return parts.join(" ");
 }
 
+// Multi-step session: simulate an agent doing real cross-source analysis.
+// Returns an array of queries to run sequentially, where each query
+// represents what an agent would actually generate next based on prior
+// results. Used to produce realistic "session-like" load on the server.
+function composeSession(): Array<{ tool: string; args: Record<string, unknown>; intent: string }> {
+  const playbooks: Array<() => Array<{ tool: string; args: Record<string, unknown>; intent: string }>> = [
+    // Political-alpha play: ticker → trades → contracts → 8-Ks
+    () => {
+      const ticker = rand(TICKERS_DEF);
+      const contractor = ticker === "LMT" ? "Lockheed Martin"
+        : ticker === "BA" ? "Boeing"
+        : ticker === "RTX" ? "Raytheon"
+        : ticker === "NOC" ? "Northrop Grumman"
+        : ticker === "GD" ? "General Dynamics"
+        : ticker;
+      return [
+        {
+          tool: "get_congressional_trades",
+          args: { ticker, sort_by: "disclosure_date", sort_order: "desc", limit: 10 },
+          intent: `[session] congressional trades in ${ticker}`,
+        },
+        {
+          tool: "get_federal_contracts",
+          args: { recipient_name: contractor, sort_by: "last_modified_date", sort_order: "desc", limit: 5 },
+          intent: `[session] ${contractor} federal contracts`,
+        },
+        {
+          tool: "get_material_events",
+          args: { ticker, item_codes: ["1.01", "8.01"], sort_by: "filing_date", sort_order: "desc", limit: 5 },
+          intent: `[session] ${ticker} material agreement / regulation 8-Ks`,
+        },
+      ];
+    },
+
+    // CEO insider tracker: officer trades → planned sales → ownership baseline
+    () => {
+      const p = rand([
+        { ticker: "AAPL", officer: "Cook" },
+        { ticker: "TSLA", officer: "Musk" },
+        { ticker: "NVDA", officer: "Huang" },
+        { ticker: "MSFT", officer: "Nadella" },
+        { ticker: "META", officer: "Zuckerberg" },
+      ]);
+      return [
+        {
+          tool: "get_insider_transactions",
+          args: { ticker: p.ticker, officer_name: p.officer, sort_by: "disclosure_date", sort_order: "desc", limit: 5 },
+          intent: `[session] ${p.officer}'s recent ${p.ticker} trades`,
+        },
+        {
+          tool: "get_planned_insider_sales",
+          args: { ticker: p.ticker, filer_name: p.officer, sort_by: "filing_date", sort_order: "desc", limit: 5 },
+          intent: `[session] ${p.officer}'s planned ${p.ticker} sales`,
+        },
+        {
+          tool: "get_initial_ownership_baselines",
+          args: { ticker: p.ticker, filer_name: p.officer, sort_by: "filing_date", sort_order: "desc", limit: 3 },
+          intent: `[session] ${p.officer}'s ${p.ticker} starting position`,
+        },
+      ];
+    },
+
+    // Lobbying-meets-trades: client → lobbying spend → congressional trades on that client's stock
+    () => {
+      const client = rand([
+        { name: "Pfizer", ticker: "PFE" },
+        { name: "Microsoft", ticker: "MSFT" },
+        { name: "Amazon", ticker: "AMZN" },
+        { name: "Boeing", ticker: "BA" },
+        { name: "Apple", ticker: "AAPL" },
+      ]);
+      return [
+        {
+          tool: "get_lobbying_filings",
+          args: { client_name: client.name, sort_by: "income", sort_order: "desc", limit: 5 },
+          intent: `[session] ${client.name} top lobbying filings`,
+        },
+        {
+          tool: "get_congressional_trades",
+          args: { ticker: client.ticker, sort_by: "disclosure_date", sort_order: "desc", limit: 5 },
+          intent: `[session] congressional trades in ${client.ticker}`,
+        },
+      ];
+    },
+
+    // Activist watchlist: top stakes → on a chosen target, who's accumulating
+    () => {
+      return [
+        {
+          tool: "get_activist_stakes",
+          args: { is_activist: true, sort_by: "percent_of_class", sort_order: "desc", limit: 10 },
+          intent: "[session] biggest activist stakes overall",
+        },
+        {
+          tool: "get_activist_stakes",
+          args: { filer_name: "Pershing Square", sort_by: "filing_date", sort_order: "desc", limit: 5 },
+          intent: "[session] Pershing Square recent stake disclosures",
+        },
+      ];
+    },
+  ];
+  return rand(playbooks)();
+}
+
 async function main() {
-  const N = 30;
-  console.log(`# Randomized battle test — ${N} queries\n`);
+  const N = 50;
+  console.log(`# Randomized battle test — ${N} single queries + 1 composed session\n`);
 
   const results: Result[] = [];
 
@@ -535,6 +804,38 @@ async function main() {
     console.log("");
   }
 
+  // ─── Composed session (multi-step like a real agent would do) ────────
+  console.log(`\n## Composed session (3-step agent flow)\n`);
+  const session = composeSession();
+  for (let j = 0; j < session.length; j++) {
+    const q = session[j]!;
+    const t0 = Date.now();
+    try {
+      const { count, sample } = await callTool(q.tool, q.args);
+      const r: Result = {
+        num: N + j + 1, intent: q.intent, tool: q.tool, args: q.args,
+        ok: true, count, durationMs: Date.now() - t0, sample,
+      };
+      results.push(r);
+      const status = count > 0 ? "✓" : "○";
+      console.log(`[step ${j + 1}/${session.length}] ${status} ${q.tool} — ${q.intent}`);
+      console.log(`    args: ${JSON.stringify(q.args)}`);
+      console.log(`    → ${count} hit${count === 1 ? "" : "s"} in ${r.durationMs}ms`);
+      if (sample) console.log(`    sample: ${summarizeSample(sample)}`);
+    } catch (e) {
+      const r: Result = {
+        num: N + j + 1, intent: q.intent, tool: q.tool, args: q.args,
+        ok: false, count: 0, durationMs: Date.now() - t0,
+        error: e instanceof Error ? e.message : String(e),
+      };
+      results.push(r);
+      console.log(`[step ${j + 1}/${session.length}] ✗ ${q.tool} — ${q.intent}`);
+      console.log(`    args: ${JSON.stringify(q.args)}`);
+      console.log(`    FAILED in ${r.durationMs}ms: ${r.error}`);
+    }
+    console.log("");
+  }
+
   // ─── Summary ─────────────────────────────────────────────
   const ok = results.filter((r) => r.ok);
   const empty = ok.filter((r) => r.count === 0);
@@ -542,9 +843,10 @@ async function main() {
   const withData = ok.filter((r) => r.count > 0);
   const avgLatency = Math.round(results.reduce((s, r) => s + r.durationMs, 0) / results.length);
 
+  const total = results.length;
   console.log(`\n## Summary\n`);
-  console.log(`  Total queries:     ${N}`);
-  console.log(`  ✓ Returned data:   ${withData.length} (${Math.round(100 * withData.length / N)}%)`);
+  console.log(`  Total queries:     ${total} (${N} singles + ${total - N} session-steps)`);
+  console.log(`  ✓ Returned data:   ${withData.length} (${Math.round(100 * withData.length / total)}%)`);
   console.log(`  ○ Returned 0 hits: ${empty.length}`);
   console.log(`  ✗ Failed:          ${failed.length}`);
   console.log(`  Avg latency:       ${avgLatency}ms`);

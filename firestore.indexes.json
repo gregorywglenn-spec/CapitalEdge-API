@@ -352,6 +352,14 @@
       "collectionGroup": "insider_trades",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "transaction_type", "order": "ASCENDING" },
+        { "fieldPath": "total_value", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "insider_trades",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "company_cik", "order": "ASCENDING" },
         { "fieldPath": "total_value", "order": "DESCENDING" }
       ]
@@ -592,6 +600,32 @@
         { "fieldPath": "ticker", "order": "ASCENDING" },
         { "fieldPath": "transaction_type", "order": "ASCENDING" },
         { "fieldPath": "transaction_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "insider_trades",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ticker", "order": "ASCENDING" },
+        { "fieldPath": "transaction_type", "order": "ASCENDING" },
+        { "fieldPath": "transaction_date", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "insider_trades",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ticker", "order": "ASCENDING" },
+        { "fieldPath": "transaction_type", "order": "ASCENDING" },
+        { "fieldPath": "total_value", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "insider_trades",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "transaction_type", "order": "ASCENDING" },
+        { "fieldPath": "total_value", "order": "ASCENDING" }
       ]
     },
     {

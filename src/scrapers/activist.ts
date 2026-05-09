@@ -270,7 +270,12 @@ const xml = new XMLParser({
   // (CIKs with leading zeros, CUSIPs, etc.).
   parseTagValue: false,
   parseAttributeValue: false,
-});
+  // Bump default 100-tag limit. Big-cap 13G/A filings (WMT 2024 stack,
+  // BLK funds-of-funds entities) routinely exceed it because each
+  // reporting-person block stacks subsidiary disclosures multiple levels
+  // deep. v1.1 polish from CLAUDE.md.
+  maxNestedTags: 5000,
+} as ConstructorParameters<typeof XMLParser>[0]);
 
 /**
  * Coerce a "reporting person" container to a uniform array. Both schemas

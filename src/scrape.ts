@@ -442,10 +442,23 @@ const COMMANDS: Record<string, CliCommand> = {
   },
   "13d-13g-feed": {
     description:
-      "Scrape Schedule 13D/13G filings across all issuers. Two modes: (1) lookback — pass N days as positional (default 7); (2) date-range — pass --start-date=YYYY-MM-DD --end-date=YYYY-MM-DD for backfill. Add --save to write to Firestore. Captures activist campaigns, hostile bids, large institutional accumulations.",
+      "Scrape Schedule 13D/13G filings across all issuers. Two modes: (1) lookback — pass N days as positional (default 7); (2) date-range — pass --start-date=YYYY-MM-DD --end-date=YYYY-MM-DD for backfill. Default cap 100 filings PER form code (4 codes = 400 total). Pass --max-filings=N to override (e.g. --max-filings=10000 for full-year backfill). Add --save to write to Firestore.",
     run: async (args) => {
       const range = parseDateRangeArgs(args, 7);
-      const rows = await scrapeActivistLiveFeed(range);
+      const maxFilingsFlag = args.find((a) => a.startsWith("--max-filings="));
+      const maxFilingsPerForm = maxFilingsFlag
+        ? parseInt(maxFilingsFlag.slice("--max-filings=".length), 10)
+        : undefined;
+      if (
+        maxFilingsPerForm !== undefined &&
+        (Number.isNaN(maxFilingsPerForm) || maxFilingsPerForm <= 0)
+      ) {
+        throw new Error("--max-filings=N must be a positive integer");
+      }
+      const rows = await scrapeActivistLiveFeed({
+        ...range,
+        ...(maxFilingsPerForm !== undefined ? { maxFilingsPerForm } : {}),
+      });
       if (hasSaveFlag(args)) {
         console.error(
           `[save] Writing ${rows.length} activist/passive ownership rows to Firestore...`,
