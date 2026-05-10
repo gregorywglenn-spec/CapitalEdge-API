@@ -79,95 +79,9 @@
     footer a:hover { color: var(--fg); }
     .footer-links { margin-bottom: 12px; }
     .footer-links a { margin-right: 18px; }
-
-    /* ─── REVIEW BANNER (REMOVE BEFORE DEPLOY) ─── */
-    .review-banner {
-      max-width: 760px; margin: 24px auto 0; padding: 20px 24px;
-      background: rgba(77, 255, 32, 0.06);
-      border: 1px solid var(--accent);
-      border-radius: 8px;
-      font-size: 14px; line-height: 1.55;
-    }
-    .review-banner .review-tag {
-      display: inline-block;
-      background: var(--accent); color: #0d1117;
-      padding: 3px 10px; border-radius: 4px;
-      font-size: 11px; font-weight: 700;
-      letter-spacing: 0.06em; text-transform: uppercase;
-      margin-bottom: 12px;
-    }
-    .review-banner h2 { font-size: 16px; margin: 0 0 6px; color: var(--fg); }
-    .review-banner ul { padding-left: 20px; margin: 8px 0 0; color: var(--muted); }
-    .review-banner ul li { margin-bottom: 4px; }
-    .review-banner code {
-      background: var(--bg); border: 1px solid var(--border);
-    }
   </style>
 </head>
 <body>
-
-  <!-- ═══════════════════════════════════════════════════════════════════
-       REVIEW BANNER — DELETE THIS ENTIRE <aside> BLOCK BEFORE PUBLIC DEPLOY
-       ═══════════════════════════════════════════════════════════════════ -->
-  <aside class="review-banner" id="review-banner">
-    <span class="review-tag">Review Notes — Not Visible to Public</span>
-    <h2>Where this Privacy Policy will appear</h2>
-    <p>
-      This file deploys as a static page on the KeyVex Firebase Hosting
-      site (<code>capitaledge-api</code> Hosting site, served from
-      <code>marketing/site/privacy.html</code>).
-    </p>
-    <ul>
-      <li>
-        <strong>Live URLs (after deploy):</strong>
-        <code>https://keyvex.com/privacy</code> and
-        <code>https://www.keyvex.com/privacy</code>
-        (and also <code>https://capitaledge-api.web.app/privacy</code> as
-        the underlying Firebase Hosting URL).
-      </li>
-      <li>
-        <strong>Linked from:</strong> the footer of the main landing page
-        at <code>https://keyvex.com</code> ("Privacy Policy" text link
-        in the legal disclaimer paragraph).
-      </li>
-      <li>
-        <strong>Submitted as the Privacy Policy URL on:</strong>
-        Anthropic's MCP server directory submission, Smithery, the
-        Awesome-MCP GitHub list, and PulseMCP — Anthropic explicitly
-        requires a public Privacy Policy URL as a prerequisite for
-        listing approval.
-      </li>
-      <li>
-        <strong>Referenced by email:</strong> any future signup-confirmation
-        and account-update emails will include a link back to this URL.
-      </li>
-    </ul>
-    <h2 style="margin-top:16px;">Open items before public deploy</h2>
-    <ul>
-      <li>Confirm legal entity name + jurisdiction once LLC formation
-          completes (Section 1 currently says "in the process of formation").</li>
-      <li>Confirm email-delivery provider (Section 4 currently lists
-          Postmark / SendGrid / Resend as candidates — pick one).</li>
-      <li>Confirm <code>privacy@keyvex.com</code> mailbox is configured
-          before the policy goes live; until then, the contact section
-          falls back to <code>contact@capitaledge.app</code>.</li>
-      <li>Confirm the data-retention windows (Section 5: account data
-          30 days post-closure, request logs 13 months rolling, payment
-          records 7 years per tax law).</li>
-      <li>Update <em>Effective</em> and <em>Last updated</em> dates to
-          the actual deploy date if it slips past May 10, 2026.</li>
-    </ul>
-    <p style="margin-top:12px; margin-bottom:0;">
-      <strong>To strip this banner before deploy:</strong> delete the
-      <code>&lt;aside class="review-banner"&gt;</code> block (and its
-      surrounding HTML comments), and delete the
-      <code>.review-banner</code> CSS rules in the <code>&lt;style&gt;</code>
-      tag. Both are clearly marked.
-    </p>
-  </aside>
-  <!-- ═══════════════════════════════════════════════════════════════════
-       END REVIEW BANNER
-       ═══════════════════════════════════════════════════════════════════ -->
 
   <header class="topbar">
     <a href="/" class="logo" aria-label="KeyVex"><img src="/keyvex-wordmark.png" alt="KeyVex" /></a>
