@@ -5,12 +5,32 @@
  * change to error-handling or response shape happens in one place.
  */
 
+import { randomUUID } from "node:crypto";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { findTool, TOOLS } from "./tools/index.js";
+
+/**
+ * KeyVex anti-rebroadcast fingerprint. Every successful (and error) tool
+ * response includes a `_keyvex` metadata block at the top level. The
+ * `request_id` is unique per call (kx_<16 hex chars>); we log it server-
+ * side keyed to the API key + timestamp so any rebroadcast can be traced
+ * back to a specific customer + call. The Terms of Service prohibit
+ * stripping this block from any redistributed response. See the
+ * "Pure-publisher posture & anti-rebroadcast" notes in CLAUDE.md.
+ */
+const KEYVEX_VERSION = "0.18.0";
+
+function makeFingerprint() {
+  return {
+    request_id: `kx_${randomUUID().replace(/-/g, "").slice(0, 16)}`,
+    served_at: new Date().toISOString(),
+    server_version: KEYVEX_VERSION,
+  };
+}
 
 /**
  * Construct a fresh MCP Server instance with the standard tool capability.
@@ -49,9 +69,18 @@ export function applyToolHandlers(server: Server): void {
     }
     try {
       const result = await tool.handler(request.params.arguments ?? {});
+      // Inject the anti-rebroadcast fingerprint as a top-level _keyvex
+      // block. ToS prohibits stripping this from redistributed responses.
+      const resultWithFingerprint = {
+        ...(result as Record<string, unknown>),
+        _keyvex: makeFingerprint(),
+      };
       return {
         content: [
-          { type: "text" as const, text: JSON.stringify(result, null, 2) },
+          {
+            type: "text" as const,
+            text: JSON.stringify(resultWithFingerprint, null, 2),
+          },
         ],
       };
     } catch (err) {
@@ -69,7 +98,11 @@ function errorResult(code: string, message: string) {
     content: [
       {
         type: "text" as const,
-        text: JSON.stringify({ code, message }, null, 2),
+        text: JSON.stringify(
+          { code, message, _keyvex: makeFingerprint() },
+          null,
+          2,
+        ),
       },
     ],
     isError: true,
