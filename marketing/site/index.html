@@ -37,11 +37,8 @@
       max-width: 920px; margin: 0 auto; padding: 28px 24px 0;
       display: flex; align-items: center; justify-content: space-between;
     }
-    .logo {
-      font-weight: 800; font-size: 22px; letter-spacing: -0.01em;
-      color: var(--fg); text-decoration: none;
-    }
-    .logo .accent { color: var(--accent); }
+    .logo { display: inline-flex; align-items: center; text-decoration: none; }
+    .logo img { height: 30px; width: auto; display: block; }
     nav.topnav a {
       color: var(--muted); text-decoration: none; margin-left: 22px; font-size: 14px;
     }
@@ -62,10 +59,27 @@
     section .lead { font-size: 18px; color: var(--muted); margin-bottom: 24px; }
 
     /* Hero */
-    .hero { padding: 64px 0 56px; border-top: none; text-align: left; }
+    .hero {
+      padding: 64px 0 56px; border-top: none; text-align: left;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 40px;
+      align-items: center;
+    }
+    .hero-content { min-width: 0; }
     .hero h1 { font-size: 52px; line-height: 1.1; }
     .hero .sub { font-size: 19px; color: var(--muted); max-width: 680px; margin-bottom: 32px; }
     .hero .cta-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px; }
+    .hero .mascot {
+      width: 320px; max-width: 100%; height: auto; display: block;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    }
+    @media (max-width: 820px) {
+      .hero { grid-template-columns: 1fr; gap: 24px; }
+      .hero .mascot { width: 240px; margin: 0 auto; }
+    }
     .btn {
       display: inline-block; padding: 12px 22px; border-radius: 8px;
       font-weight: 600; font-size: 15px; text-decoration: none;
@@ -220,7 +234,7 @@
 </head>
 <body>
   <header class="topbar">
-    <a href="#" class="logo">Key<span class="accent">Vex</span></a>
+    <a href="#" class="logo" aria-label="KeyVex"><img src="/keyvex-wordmark.png" alt="KeyVex" /></a>
     <nav class="topnav">
       <a href="#sources">Sources</a>
       <a href="#demo">Demo</a>
@@ -233,20 +247,23 @@
 
     <!-- Hero -->
     <section class="hero">
-      <span class="slogan">Plan. Execute. Elevate.</span>
-      <div class="status-badge">Pre-launch · Preview access</div>
-      <h1>The MCP server for US public financial disclosures.</h1>
-      <p class="sub">
-        13 distinct disclosure sources — congressional trades, insider transactions,
-        institutional holdings, lobbying spend, federal contracts, member profiles,
-        financial disclosures, and material events — all queryable by AI agents
-        through one Bearer-authenticated endpoint.
-      </p>
-      <div class="cta-row">
-        <a class="btn btn-primary" href="mailto:contact@capitaledge.app?subject=KeyVex%20preview%20access">Get free preview access</a>
-        <a class="btn btn-secondary" href="#demo">See the demo</a>
+      <div class="hero-content">
+        <span class="slogan">Plan. Execute. Elevate.</span>
+        <div class="status-badge">Pre-launch · Preview access</div>
+        <h1>The MCP server for US public financial disclosures.</h1>
+        <p class="sub">
+          13 distinct disclosure sources — congressional trades, insider transactions,
+          institutional holdings, lobbying spend, federal contracts, member profiles,
+          financial disclosures, and material events — all queryable by AI agents
+          through one Bearer-authenticated endpoint.
+        </p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="mailto:contact@keyvex.com?subject=KeyVex%20preview%20access">Get free preview access</a>
+          <a class="btn btn-secondary" href="#demo">See the demo</a>
+        </div>
+        <p class="fineprint">5,000 calls / month free. Paid tiers from $29/mo. No credit card required for preview.</p>
       </div>
-      <p class="fineprint">5,000 calls / month free. Paid tiers from $29/mo. No credit card required for preview.</p>
+      <img src="/keyvex-mascot.png" alt="KeyVex mascot — a green lizard wearing a KEYVEX shirt" class="mascot" />
     </section>
 
     <!-- Section 1 — What KeyVex is -->
@@ -566,9 +583,10 @@ Agent: get_lobbying_filings(client_name:"Lockheed Martin", filing_year:2026)
       </div>
     </div>
     <p class="legal">
-      KeyVex is a data publisher, not an investment advisor. Nothing on this site
+      KeyVex is a data publisher, not an investment adviser. Nothing on this site
       or in API responses is investment advice. Use of this service is subject to
-      our Terms of Service and Privacy Policy <span class="muted">(coming with LLC formation)</span>.
+      our <a href="/privacy">Privacy Policy</a> and Terms of Service
+      <span class="muted">(Terms coming with LLC formation)</span>.
     </p>
   </footer>
 

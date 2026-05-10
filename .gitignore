@@ -34,3 +34,6 @@ coverage/
 
 # Claude Code local session state (per-machine, not project)
 .claude/
+
+# Firebase CLI local cache (deploy hashes, hosting cache)
+.firebase/

@@ -2,25 +2,29 @@
 
 The Model Context Protocol (MCP) server for **US public financial disclosures**.
 
-Congressional trades, executive insider transactions, institutional holdings, activist stakes, federal contracts, lobbying spend, material events, and member profiles — every tool callable from Claude, Cursor, or any MCP-compatible agent through one Bearer-authenticated endpoint. Designed for AI agents from the ground up: fewer tools, smarter parameters, descriptions that help the agent decide *when* to use each one — not yet another REST API with MCP bolted on top.
+Congressional trades, executive insider transactions, institutional holdings, activist stakes, federal contracts, lobbying spend, material events, planned insider sales, ownership baselines, annual financial disclosures, current and historical legislators with full committee assignments — every tool callable from Claude, Cursor, or any MCP-compatible agent through one Bearer-authenticated endpoint. Designed for AI agents from the ground up: fewer tools, smarter parameters, tool descriptions that help the agent decide *when* to use each one — not yet another REST API with MCP bolted on top.
+
+**Endpoint:** `https://mcp.keyvex.com` · **Site:** [keyvex.com](https://keyvex.com) · **Privacy:** [keyvex.com/privacy](https://keyvex.com/privacy)
 
 ---
 
 ## Why KeyVex
 
-Every other financial-data MCP today wraps a pre-existing REST API and ends up with 100–250 tools that overflow agent context windows. KeyVex starts from the agent: ten entity-based tools, rich filter parameters, no separate `get_X` and `get_X_by_ticker` and `get_recent_X` variants.
+Every other financial-data MCP today wraps a pre-existing REST API and ends up with 100–250 tools that overflow agent context windows. KeyVex starts from the agent: **12 entity-based tools** with rich filter parameters — no separate `get_X` and `get_X_by_ticker` and `get_recent_X` variants.
 
 **The wedge — one conversation, five sources, zero stitching:**
 
 ```
 Agent: get_congressional_trades(ticker:"LMT", since:"2026-01-01")
 → 23 trades by senators and reps in Lockheed Martin
+   (each row carries the trader's bioguide_id)
 
-Agent: get_member_profile(bioguide_id:"<each trader's id>")
-→ party, state, committees — including who sits on Armed Services
+Agent: get_member_profile(bioguide_id:"C001035")  // Susan Collins, e.g.
+→ party, state, district, committees, cross-reference IDs (FEC,
+   OpenSecrets, ICPSR, Wikipedia)
 
 Agent: get_federal_contracts(recipient_name:"Lockheed Martin", since:"2026-01-01")
-→ 1,247 LMT contracts awarded by DoD
+→ 1,247 LMT contracts awarded by DoD, NAICS-coded
 
 Agent: get_material_events(ticker:"LMT", item_codes:["1.01","2.01"])
 → Lockheed's recent material-agreement and acquisition 8-K filings
@@ -29,7 +33,7 @@ Agent: get_lobbying_filings(client_name:"Lockheed Martin", filing_year:2026)
 → LMT's lobbying spend, what issues, what agencies contacted
 ```
 
-Five separate disclosure sources joined by `ticker` + `bioguide_id` + `recipient_name`. Triangulation that takes a Bloomberg terminal and an analyst, in a single AI agent and a few seconds.
+Five separate disclosure sources joined by `ticker` + `bioguide_id` + `recipient_name`. Triangulation that takes a Bloomberg terminal and an analyst — in a single AI agent and a few seconds.
 
 ---
 
@@ -38,19 +42,26 @@ Five separate disclosure sources joined by `ticker` + `bioguide_id` + `recipient
 | Tool | Source | Refresh cadence |
 |---|---|---|
 | `get_insider_transactions` | SEC Form 4 (open-market insider trades) | Every 30 min |
-| `get_institutional_holdings` | SEC 13F-HR (quarterly fund holdings) | Every 4 hours |
-| `get_congressional_trades` | Senate eFD + House Clerk PTRs | Daily 6 AM ET |
+| `get_initial_ownership_baselines` | SEC Form 3 (initial ownership baselines) | Hourly |
 | `get_planned_insider_sales` | SEC Form 144 (planned-sale notices) | Hourly |
-| `get_activist_stakes` | SEC 13D / 13G (5%+ ownership) | Hourly |
-| `get_federal_contracts` | USAspending.gov (federal awards) | Daily |
-| `get_member_profile` | Current senators + reps + committee assignments | Weekly |
+| `get_institutional_holdings` | SEC 13F-HR (quarterly fund holdings) | Every 4 hours |
+| `get_activist_stakes` | SEC 13D / 13G + amendments (5%+ ownership) | Hourly |
 | `get_material_events` | SEC 8-K (M&A, exec changes, earnings) | Hourly |
-| `get_lobbying_filings` | Senate LDA quarterly filings | Daily |
 | `get_annual_financial_disclosures` | SEC Form 278 / Public Financial Disclosure (Senate eFD; House v1.1) | Weekly |
+| `get_congressional_trades` | Senate eFD + House Clerk PTRs (chamber filter) | Daily 6 AM ET |
+| `get_federal_contracts` | USAspending.gov (federal awards) | Daily |
+| `get_lobbying_filings` | Senate LDA quarterly filings | Daily |
+| `get_member_profile` | Current senators + reps with full committee assignments + cross-reference IDs (FEC, OpenSecrets, ICPSR, Wikipedia, etc.) | Weekly |
+| `get_historical_member` | ~12,230 historical legislators 1789-present, with chronological terms | Monthly |
 
-`get_insider_transactions` accepts `include_baseline:true` to fold in matching SEC Form 3 initial-ownership rows in the same call (Form 4 = deltas, Form 3 = starting positions).
+**12 tools, 13 disclosure sources.** Agents query by ticker, CIK, member name, bioguide ID, committee code (Library of Congress Thomas codes — e.g., `HSAS` for House Armed Services, `SSBK` for Senate Banking), date range, dollar threshold, and more.
 
-`get_annual_financial_disclosures` returns filing METADATA in v1A (filer, date, URL to the report PDF). Agents follow `report_url` to read the asset / liability / income schedules. PDF parsing for net-worth roll-up lands in v1.1.
+A few design notes:
+
+- **`get_insider_transactions` accepts `include_baseline:true`** to fold in matching SEC Form 3 initial-ownership rows in the same call (Form 4 = deltas, Form 3 = starting positions). One round trip; both pieces of context returned together.
+- **`get_congressional_trades` merges Senate + House** into one tool with a `chamber` filter — mirrors how every aggregator (CapitolTrades, WhaleWisdom, Bloomberg) presents the data. Each row's `data_source` field discloses provenance (`SENATE_EFD_PTR` vs `HOUSE_CLERK_PTR`).
+- **`get_annual_financial_disclosures` returns filing METADATA** in v1A (filer, date, URL to the report PDF). Agents follow `report_url` to read the asset / liability / income schedules. PDF parsing for net-worth roll-up lands in v1.1.
+- **`get_member_profile` 0-hits fallback:** if a `bioguide_id` lookup returns 0 results, the member may have left office and exists only in `legislators_historical` — try `get_historical_member` instead.
 
 ---
 
@@ -130,7 +141,7 @@ For the remote endpoint, one-click installation through Anthropic's MCP director
 - **Data layer:** Google Firestore via `firebase-admin`
 - **Hosting:** Firebase Cloud Functions Gen 2, region `us-central1`
 - **Auth:** API key in Google Secret Manager (`MCP_API_KEY`) for the public HTTP endpoint
-- **Scrapers:** 13 autonomous scrapers running on cron across the unified KeyVex operation (9 in this codebase covering SEC + USAspending + LDA + Form 278 + senate/house PTRs + bioguide; 4 in the sibling dashboard codebase covering congressional analytics, derived rankings, and member-stats). No human in the loop.
+- **Scrapers:** 13 autonomous Cloud Functions on cron — SEC EDGAR forms (4, 144, 3, 13F, 13D/G, 8-K, 278), Senate eFD + House Clerk PTRs, USAspending federal contracts, Senate LDA lobbying filings, current legislators YAML, historical legislators YAML. No human in the loop.
 
 ---
 
@@ -172,7 +183,7 @@ src/
 └── index.ts               — stdio entry point (Claude Desktop)
 
 functions/
-├── src/index.ts           — Firebase Cloud Functions entry: 12 scheduled scraper functions in this project (8 unique sources + 4 duplicates of dashboard-side scrapers, consolidation pending) + the `mcp` HTTP function + a `scheduledHealthCheck` Slack pinger
+├── src/index.ts           — Firebase Cloud Functions entry: 13 scheduled scraper functions + the `mcp` HTTP function + a `scheduledHealthCheck` Slack pinger
 ├── package.json           — minimal deps; rest bundled by esbuild
 └── tsconfig.json          — extends parent, includes ../src
 ```
@@ -189,9 +200,19 @@ The Firebase project ID `capitaledge-api` is permanent infrastructure (Google do
 
 ## Status
 
-Production. **10 MCP tools, 13 autonomous scrapers** running on cron across the unified KeyVex operation (9 in this codebase + 4 in the sibling dashboard codebase). MCP server deployed as an authenticated HTTPS endpoint at `https://mcp.keyvex.com` (TLS via Let's Encrypt). Bioguide back-fill at 100% on congressional trades. Cross-project health-check pings Slack with `[capitaledge-api]` prefix once daily.
+Production. **12 MCP tools** at server v0.18.0, **13 autonomous scrapers** running on cron, **~165,000 records** across 13 Firestore collections.
 
-Custom domain (`mcp.keyvex.com`), public registry submissions (Anthropic / Smithery / Awesome-MCP / PulseMCP), and self-serve API key issuance are the next milestones.
+- **API endpoint** `https://mcp.keyvex.com` — auto-managed TLS via Let's Encrypt. Stateless Streamable HTTP transport. Bearer auth via Google Secret Manager.
+- **Landing page** `https://keyvex.com` (apex + `www`) — auto-managed TLS.
+- **Autonomous data freshness** — 13 Cloud Functions Gen 2 keep collections current on cadences from every 30 minutes (Form 4) to monthly (historical legislators). Cross-project health-check pings Slack daily.
+- **Battle-tested** — 200+ randomized realistic-load queries at 84% data hit / 0 query failures / sub-1s avg latency. Big-cap activist coverage (Vanguard's 9.47% AAPL 13G/A from July 2025, etc.) verified via targeted issuer-CIK backfill.
+- **Pre-launch** — public registry submissions (Anthropic / Smithery / Awesome-MCP / PulseMCP) and self-serve API key issuance are the immediate next milestones. Free preview tier available on request.
+
+---
+
+## Demo
+
+> Loom walkthrough coming with launch — political-alpha cross-source query, ~5 minutes.
 
 ---
 
@@ -201,4 +222,4 @@ Private. No license declared. Reach out if you'd like preview access.
 
 ## Contact
 
-`contact@capitaledge.app` (until `contact@keyvex.com` is operational).
+[contact@keyvex.com](mailto:contact@keyvex.com) · [keyvex.com](https://keyvex.com) · [@keyvex_](https://x.com/keyvex_) on X · [u/KeyVex_](https://www.reddit.com/user/KeyVex_) on Reddit
