@@ -36,7 +36,10 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import {
   getLiveDb,
   saveActivistOwnership,
+  saveBills,
   saveCongressionalTrades,
+  saveFecCandidates,
+  saveFecCommittees,
   saveFederalContractAwards,
   saveForm144Filings,
   saveForm278Filings,
@@ -47,6 +50,9 @@ import {
   saveLegislatorsHistorical,
   saveLobbyingFilings,
   saveMaterialEvents,
+  saveOtcMarketWeekly,
+  saveRollCallVotes,
+  saveTenderOffers,
   writeJobMeta,
 } from "../../src/firestore.js";
 import { runHealthCheck } from "./health-check.js";
@@ -70,6 +76,16 @@ import { scrapeLobbyingByPeriod } from "../../src/scrapers/lobbying.js";
 import { scrapeSenateLiveFeed } from "../../src/scrapers/senate.js";
 import { scrapeSenateForm278 } from "../../src/scrapers/form278.js";
 import { scrapeContractsLiveFeed } from "../../src/scrapers/usaspending.js";
+import {
+  scrapeFecCandidates,
+  scrapeFecCommittees,
+} from "../../src/scrapers/fec.js";
+import { scrapeTenderOffersLiveFeed } from "../../src/scrapers/tender-offers.js";
+import {
+  scrapeBills,
+  scrapeRollCallVotes,
+} from "../../src/scrapers/congress-legislation.js";
+import { scrapeFinraOtcWeek } from "../../src/scrapers/finra-otc.js";
 
 // ─── Common config ──────────────────────────────────────────────────────────
 
@@ -488,6 +504,241 @@ export const scrapeBioguideHistoricalMonthly = onSchedule(
   },
 );
 
+// ─── api.data.gov key (shared by FEC + Congress scrapers) ────────────────
+
+/**
+ * api.data.gov bearer key, used for both api.open.fec.gov AND
+ * api.congress.gov calls (they share the same gateway). Stored in
+ * Google Secret Manager via `firebase functions:secrets:set FEC_API_KEY`.
+ * Both FEC and congress.gov scrapers read process.env.FEC_API_KEY at
+ * runtime; Firebase auto-injects when `secrets: [fecApiKey]` is in the
+ * function config.
+ */
+const fecApiKey = defineSecret("FEC_API_KEY");
+
+// ─── New scheduled scrapers (Day 8) ───────────────────────────────────────
+
+/**
+ * FEC candidates. Weekly Sunday 6:30 AM ET.
+ *
+ * Cadence: weekly. FEC publishes new candidate filings within days of
+ * receipt, but the universe of registered candidates changes slowly.
+ * Weekly catches >99% of relevant changes without burning api.data.gov
+ * budget.
+ *
+ * Cost per run: ~150 API calls (3 cycles × ~50 candidate pages), <10 min
+ * runtime, ~3.5K Firestore upserts. Light, fast.
+ *
+ * Split from committees because the Cloud Functions Gen 2 timeout cap is
+ * 30 min; the combined FEC pull can exceed that during heavy committee
+ * weeks with retries.
+ */
+export const scrapeFecCandidatesWeekly = onSchedule(
+  {
+    schedule: "30 6 * * 0",
+    region: REGION,
+    timeZone: TZ,
+    memory: "512MiB",
+    timeoutSeconds: 900, // 15 min — well within actual runtime
+    secrets: [fecApiKey],
+    retryCount: 0,
+  },
+  async () => {
+    const started = Date.now();
+    logger.info("[fec candidates] starting weekly refresh");
+    const candidates = await scrapeFecCandidates({ activeOnly: true });
+    logger.info(`[fec candidates] scraper returned ${candidates.length}`);
+    let docsWritten = 0;
+    if (candidates.length > 0) {
+      const r = await saveFecCandidates(candidates);
+      logger.info(`[fec candidates] saved ${r.saved} to ${r.collection}`);
+      docsWritten = r.saved;
+    }
+    await writeJobMeta("fecCandidatesSync", { started, docsWritten });
+  },
+);
+
+/**
+ * FEC committees. Weekly Sunday 7 AM ET (30 min offset from candidates).
+ *
+ * Cadence: weekly. ~30K committees across 3 cycles. Heaviest scheduled
+ * scraper in the codebase by API pages (~600) and Firestore writes
+ * (~30K). The 30-min offset from FEC candidates avoids competing for
+ * the same api.data.gov 1000 req/hr budget back-to-back.
+ *
+ * Cost per run: ~600 API calls, ~20-30 min runtime, ~30K Firestore
+ * upserts (most are no-ops via merge:true). 1800s timeout is the
+ * Cloud Functions Gen 2 maximum for scheduled triggers — sized to fit.
+ */
+export const scrapeFecCommitteesWeekly = onSchedule(
+  {
+    schedule: "0 7 * * 0",
+    region: REGION,
+    timeZone: TZ,
+    memory: "1GiB",
+    timeoutSeconds: 1800,
+    secrets: [fecApiKey],
+    retryCount: 0,
+  },
+  async () => {
+    const started = Date.now();
+    logger.info("[fec committees] starting weekly refresh");
+    const committees = await scrapeFecCommittees({});
+    logger.info(`[fec committees] scraper returned ${committees.length}`);
+    let docsWritten = 0;
+    if (committees.length > 0) {
+      const r = await saveFecCommittees(committees);
+      logger.info(`[fec committees] saved ${r.saved} to ${r.collection}`);
+      docsWritten = r.saved;
+    }
+    await writeJobMeta("fecCommitteesSync", { started, docsWritten });
+  },
+);
+
+/**
+ * SEC Schedule TO (tender offers). Daily 7 AM ET.
+ *
+ * Cadence: daily. New tender offer filings can land any business day;
+ * amendments to existing offers update prices / extend expiration dates
+ * frequently. 2-day lookback catches anything filed late on Friday or
+ * over a weekend.
+ *
+ * No secret needed — SEC EDGAR FTS is unauthenticated. Volume is small
+ * (handful to a couple dozen filings per day) so memory + timeout
+ * defaults are plenty.
+ */
+export const scrapeTenderOffersDaily = onSchedule(
+  {
+    schedule: "0 7 * * *",
+    region: REGION,
+    timeZone: TZ,
+    memory: "512MiB",
+    timeoutSeconds: 540,
+    retryCount: 0,
+  },
+  async () => {
+    const started = Date.now();
+    logger.info("[tender-offers] starting daily refresh (2-day lookback)");
+    const offers = await scrapeTenderOffersLiveFeed(2);
+    logger.info(`[tender-offers] scraper returned ${offers.length} filings`);
+    let docsWritten = 0;
+    if (offers.length > 0) {
+      const r = await saveTenderOffers(offers);
+      logger.info(`[tender-offers] saved ${r.saved} filings to ${r.collection}`);
+      docsWritten = r.saved;
+    }
+    await writeJobMeta("tenderOffersSync", { started, docsWritten });
+  },
+);
+
+/**
+ * Congressional bills + House roll-call votes (combined). Daily 7:15 AM ET.
+ *
+ * Cadence: daily. Bills get latest-action updates daily when Congress is
+ * in session; House roll-call votes happen multiple times per session
+ * week. Both scrapers re-pull the full 119th Congress every run because
+ * merge-on-upsert is cheap and the api.congress.gov totals are well
+ * within our 1000 req/hr budget.
+ *
+ * Cost per run: ~100 API calls (bills: ~80 pages × 8 types ÷ pagination
+ * dedup + votes: ~5 pages), ~5 min runtime, ~16K Firestore upserts (mostly
+ * unchanged via merge).
+ *
+ * Senate roll-call votes are NOT scraped here — they live on senate.gov
+ * XML, not api.congress.gov. v1.1 polish.
+ */
+export const scrapeCongressLegislationDaily = onSchedule(
+  {
+    schedule: "15 7 * * *",
+    region: REGION,
+    timeZone: TZ,
+    memory: "1GiB",
+    timeoutSeconds: 1800,
+    secrets: [fecApiKey],
+    retryCount: 0,
+  },
+  async () => {
+    const started = Date.now();
+    logger.info("[congress] starting daily refresh (Congress 119)");
+
+    const bills = await scrapeBills({ congress: 119 });
+    logger.info(`[congress] bills scraper returned ${bills.length}`);
+    let billsWritten = 0;
+    if (bills.length > 0) {
+      const r = await saveBills(bills);
+      logger.info(`[congress] saved ${r.saved} bills to ${r.collection}`);
+      billsWritten = r.saved;
+    }
+
+    const votes = await scrapeRollCallVotes({ congress: 119, chamber: "house" });
+    logger.info(`[congress] votes scraper returned ${votes.length}`);
+    let votesWritten = 0;
+    if (votes.length > 0) {
+      const r = await saveRollCallVotes(votes);
+      logger.info(`[congress] saved ${r.saved} votes to ${r.collection}`);
+      votesWritten = r.saved;
+    }
+
+    await writeJobMeta("congressLegislationSync", {
+      started,
+      docsWritten: billsWritten + votesWritten,
+      stats: { bills: billsWritten, votes: votesWritten },
+    });
+  },
+);
+
+/**
+ * FINRA OTC Transparency weekly summary. Weekly Sunday 8 AM ET.
+ *
+ * Cadence: weekly. FINRA publishes weekly aggregated data with a ~2-week
+ * lag (a "fully published" week is typically 2-3 weeks prior). Sunday
+ * cron pulls the most-recent fully-published Monday. Since prior weeks
+ * are immutable once finalized, weekly cadence captures everything.
+ *
+ * Target Monday computation: today's date - 14 days, rolled back to Monday.
+ * Idempotent — re-running for the same week upserts the same doc IDs.
+ *
+ * Cost per run: ~37 API pages (T1 ~52K, T2 ~128K, OTCE ~5K, paginated at
+ * 5000 per page), ~5 min runtime, ~180-250K Firestore upserts. The heavy
+ * write step explains the 30-min timeout + 1GiB memory.
+ */
+export const scrapeFinraOtcWeekly = onSchedule(
+  {
+    schedule: "0 8 * * 0",
+    region: REGION,
+    timeZone: TZ,
+    memory: "1GiB",
+    timeoutSeconds: 1800,
+    retryCount: 0,
+  },
+  async () => {
+    const started = Date.now();
+    // Compute most-recent published Monday: today minus 14 days, rolled
+    // back to Monday in UTC. FINRA's weekStartDate is always a Monday.
+    const target = new Date();
+    target.setUTCDate(target.getUTCDate() - 14);
+    const dow = target.getUTCDay(); // 0=Sun..6=Sat
+    const daysBackToMonday = dow === 0 ? 6 : dow - 1;
+    target.setUTCDate(target.getUTCDate() - daysBackToMonday);
+    const weekStartDate = target.toISOString().split("T")[0]!;
+    logger.info(`[finra-otc] starting weekly refresh for ${weekStartDate}`);
+
+    const rows = await scrapeFinraOtcWeek({ weekStartDate });
+    logger.info(`[finra-otc] scraper returned ${rows.length} rows`);
+    let docsWritten = 0;
+    if (rows.length > 0) {
+      const r = await saveOtcMarketWeekly(rows);
+      logger.info(`[finra-otc] saved ${r.saved} rows to ${r.collection}`);
+      docsWritten = r.saved;
+    }
+    await writeJobMeta("otcMarketWeeklySync", {
+      started,
+      docsWritten,
+      stats: { weekStartDate },
+    });
+  },
+);
+
 // ─── Cross-project health-check (Slack alerts to shared channel) ─────────
 
 /**
@@ -539,7 +790,7 @@ export const scheduledHealthCheck = onSchedule(
 // ─── MCP HTTP server (remote-reachable tool API) ──────────────────────────
 
 const SERVER_NAME = "keyvex";
-const SERVER_VERSION = "0.20.0";
+const SERVER_VERSION = "0.21.0";
 
 /**
  * The bearer token clients send in `Authorization: Bearer <key>` headers.

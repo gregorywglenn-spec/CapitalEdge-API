@@ -17,6 +17,7 @@ import * as institutionalHoldings from "./institutional-holdings.js";
 import * as lobbyingFilings from "./lobbying-filings.js";
 import * as materialEvents from "./material-events.js";
 import * as memberProfile from "./member-profile.js";
+import * as otcMarketWeekly from "./otc-market-weekly.js";
 import * as plannedInsiderSales from "./planned-insider-sales.js";
 import * as rollCallVotes from "./roll-call-votes.js";
 import * as tenderOffers from "./tender-offers.js";
@@ -41,6 +42,7 @@ export const TOOLS: ToolModule[] = [
   tenderOffers,
   bills,
   rollCallVotes,
+  otcMarketWeekly,
 ];
 
 export function findTool(name: string): ToolModule | undefined {

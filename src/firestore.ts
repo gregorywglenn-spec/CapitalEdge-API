@@ -47,6 +47,8 @@ import type {
   LobbyingFilingsQuery,
   MaterialEvent,
   MaterialEventsQuery,
+  OtcMarketWeekly,
+  OtcMarketWeeklyQuery,
   RollCallVote,
   RollCallVotesQuery,
   TenderOffer,
@@ -1617,6 +1619,119 @@ export async function saveForm278Filings(
     }
     await batch.commit();
     saved += chunk.length;
+  }
+
+  return { saved, collection: COLLECTION };
+}
+
+// ─── FINRA OTC weekly summary query + save ───────────────────────────────
+
+export async function queryOtcMarketWeekly(
+  query: OtcMarketWeeklyQuery,
+): Promise<QueryResult<OtcMarketWeekly>> {
+  if (isStubMode()) {
+    return { results: [], has_more: false };
+  }
+
+  const db = await getLiveDb();
+
+  if (query.weekly_id) {
+    const doc = await db
+      .collection("otc_market_weekly")
+      .doc(query.weekly_id)
+      .get();
+    if (!doc.exists) return { results: [], has_more: false };
+    return { results: [doc.data() as OtcMarketWeekly], has_more: false };
+  }
+
+  let q: FirestoreQuery = db.collection("otc_market_weekly");
+
+  if (query.issue_symbol) {
+    q = q.where("issue_symbol", "==", query.issue_symbol.toUpperCase());
+  }
+  if (query.mpid) {
+    q = q.where("mpid", "==", query.mpid.toUpperCase());
+  }
+  if (query.week_start_date) {
+    q = q.where("week_start_date", "==", query.week_start_date);
+  }
+  if (query.tier_identifier) {
+    q = q.where("tier_identifier", "==", query.tier_identifier.toUpperCase());
+  }
+  if (query.summary_type_code) {
+    q = q.where("summary_type_code", "==", query.summary_type_code);
+  }
+
+  // Client-side sort + substring filter (same pattern as other queries).
+  const userLimit = query.limit ?? 50;
+  const needsClient = query.issue_name || query.market_participant_name;
+  const fetchLimit = needsClient ? 2000 : Math.max(userLimit * 4, 500);
+  q = q.limit(fetchLimit);
+
+  const snap = await q.get();
+  let docs = snap.docs.map((d) => d.data() as OtcMarketWeekly);
+
+  if (query.issue_name) {
+    const needle = query.issue_name.toLowerCase();
+    docs = docs.filter((r) =>
+      (r.issue_name ?? "").toLowerCase().includes(needle),
+    );
+  }
+  if (query.market_participant_name) {
+    const needle = query.market_participant_name.toLowerCase();
+    docs = docs.filter((r) =>
+      (r.market_participant_name ?? "").toLowerCase().includes(needle),
+    );
+  }
+  if (query.since) {
+    docs = docs.filter((r) => r.week_start_date >= query.since!);
+  }
+  if (query.until) {
+    docs = docs.filter((r) => r.week_start_date <= query.until!);
+  }
+
+  const sortField = query.sort_by ?? "week_start_date";
+  const sortOrder = query.sort_order ?? "desc";
+  docs.sort((a, b) => {
+    const av = (a as unknown as Record<string, string | number>)[sortField] ?? 0;
+    const bv = (b as unknown as Record<string, string | number>)[sortField] ?? 0;
+    if (av === bv) return 0;
+    const cmp = av < bv ? -1 : 1;
+    return sortOrder === "desc" ? -cmp : cmp;
+  });
+
+  const has_more = docs.length > userLimit;
+  const results = docs.slice(0, userLimit);
+  return { results, has_more };
+}
+
+export async function saveOtcMarketWeekly(
+  rows: OtcMarketWeekly[],
+): Promise<{ saved: number; collection: string }> {
+  if (isStubMode()) {
+    throw new Error(
+      "Cannot save to Firestore in stub mode (no service account at secrets/service-account.json)",
+    );
+  }
+  const COLLECTION = "otc_market_weekly";
+  if (rows.length === 0) return { saved: 0, collection: COLLECTION };
+
+  const db = await getLiveDb();
+  const collection = db.collection(COLLECTION);
+  const BATCH_SIZE = 400;
+  let saved = 0;
+
+  for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+    const batch = db.batch();
+    const chunk = rows.slice(i, i + BATCH_SIZE);
+    for (const row of chunk) {
+      batch.set(collection.doc(row.weekly_id), row, { merge: true });
+    }
+    await batch.commit();
+    saved += chunk.length;
+    if (saved % 4000 === 0) {
+      console.error(`[firestore]   otc save progress: ${saved}/${rows.length}`);
+    }
   }
 
   return { saved, collection: COLLECTION };

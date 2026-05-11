@@ -378,6 +378,78 @@
         { "fieldPath": "cycles", "arrayConfig": "CONTAINS" },
         { "fieldPath": "last_file_date", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "otc_market_weekly",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "issue_symbol", "order": "ASCENDING" },
+        { "fieldPath": "week_start_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "otc_market_weekly",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "issue_symbol", "order": "ASCENDING" },
+        { "fieldPath": "total_weekly_share_quantity", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "otc_market_weekly",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "mpid", "order": "ASCENDING" },
+        { "fieldPath": "week_start_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "otc_market_weekly",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "week_start_date", "order": "ASCENDING" },
+        { "fieldPath": "total_notional_sum", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "bills",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "congress", "order": "ASCENDING" },
+        { "fieldPath": "latest_action_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "bills",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bill_type", "order": "ASCENDING" },
+        { "fieldPath": "latest_action_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "roll_call_votes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "congress", "order": "ASCENDING" },
+        { "fieldPath": "start_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "roll_call_votes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bill_id", "order": "ASCENDING" },
+        { "fieldPath": "start_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "tender_offers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "target_ticker", "order": "ASCENDING" },
+        { "fieldPath": "filing_date", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

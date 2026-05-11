@@ -82,6 +82,7 @@ import {
   saveFederalContractAwards,
   saveForm144Filings,
   saveForm278Filings,
+  saveOtcMarketWeekly,
   saveRollCallVotes,
   saveTenderOffers,
   saveForm3Holdings,
@@ -131,6 +132,7 @@ import {
   scrapeBills,
   scrapeRollCallVotes,
 } from "./scrapers/congress-legislation.js";
+import { scrapeFinraOtcWeek } from "./scrapers/finra-otc.js";
 import {
   listTrackedFunds,
   scrape13FByFund,
@@ -782,6 +784,42 @@ const COMMANDS: Record<string, CliCommand> = {
         );
       }
       return committees;
+    },
+  },
+  "finra-otc": {
+    description:
+      "Scrape FINRA OTC Transparency weekly summary for a specific week. Required: <YYYY-MM-DD> Monday week-start. Optional: --tier=T1|T2|OTCE (default all three), --summary-type=ATS_W_SMBL_FIRM|ATS_W_VOL_STATS|OTCE_W_SMBL_FIRM|OTCE_W_VOL_STATS (default ATS_W_SMBL_FIRM — the granular dark-pool detail). Add --save to write to otc_market_weekly Firestore collection. ~250K rows per fully-published week across all tiers.",
+    run: async (args) => {
+      const positional = args.filter((a) => !a.startsWith("--"));
+      const week = positional[0];
+      if (!week || !/^\d{4}-\d{2}-\d{2}$/.test(week)) {
+        throw new Error(
+          "Usage: tsx src/scrape.ts finra-otc <YYYY-MM-DD> [--tier=T1|T2|OTCE] [--summary-type=...] [--save]",
+        );
+      }
+      const tierFlag = args.find((a) => a.startsWith("--tier="));
+      const typeFlag = args.find((a) => a.startsWith("--summary-type="));
+      const tiers = tierFlag
+        ? [tierFlag.slice("--tier=".length).toUpperCase()]
+        : undefined;
+      const summaryTypeCode = typeFlag
+        ? typeFlag.slice("--summary-type=".length)
+        : undefined;
+      const rows = await scrapeFinraOtcWeek({
+        weekStartDate: week,
+        ...(tiers && { tiers }),
+        ...(summaryTypeCode && { summaryTypeCode }),
+      });
+      if (hasSaveFlag(args)) {
+        console.error(
+          `[save] Writing ${rows.length} OTC weekly rows to Firestore...`,
+        );
+        const result = await saveOtcMarketWeekly(rows);
+        console.error(
+          `[save] Saved ${result.saved} rows to ${result.collection}`,
+        );
+      }
+      return rows;
     },
   },
   bills: {
