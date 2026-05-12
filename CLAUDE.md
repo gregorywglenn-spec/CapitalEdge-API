@@ -698,16 +698,19 @@ Built + shipped in commit `1335a95`:
 - PDF parsing for Schedule A (assets) + Schedule C (liabilities) → compute `estimated_net_worth_min/max`. This is the killer feature ("which senators are worth $20M+?"). Brittle work — 50-200 page PDFs with multi-page tables and ranged values. Deserves a fresh-eyes session.
 - bioguide_id back-fill against the existing `legislators` + `legislators_historical` catalogs — apply the same Tier-1 / Tier-2 / Tier-3 / Tier-4 matcher used for `congressional_trades`.
 
-**Strategic implication of Derek's project being shelved:**
-- KeyVex now stands operationally alone. We don't read from `capital-edge-d5038`, don't depend on Derek's uptime, don't sunset our scrapers for an Option B consolidation that was premised on Derek being active.
-- The "13 unique scrapers across the unified KeyVex operation" framing remains accurate, but the breakdown shifts: now **9 in this codebase** (was 8 + Form 278 added) and **4 in Derek's** (down from 5 — Form 278 is no longer Derek's exclusive). Derek's remaining 4 are congressional_trades / congress / memberStats / netWorthValidation — still running on his project autonomously.
-- All operational risk for KeyVex's product lives in this repo + `capitaledge-api` Firebase project. We control the entire stack.
+**Strategic state — Derek active again, porting scrapers (revised Day 9, 2026-05-12):**
+- Derek's dashboard project at `C:\CapitalEdge` is BACK active. He's porting KeyVex's scrapers into his Firebase (`capital-edge-d5038`) to power the dashboard product. **The Day 8 "Derek shelved" framing is now stale.**
+- Operational independence still holds: we don't read from `capital-edge-d5038`, KeyVex stands alone, all KeyVex risk lives in this repo + `capitaledge-api` Firebase project. Derek pulling our scraper logic into his side is a one-way port — he benefits from our work, we don't depend on him.
+- Greg mentioned that Derek's project might benefit from the unified_search pattern and the demo-SVG approach we shipped Day 9. Those are Derek's calls to make on his side.
+- Any future "Option B consolidation" conversations are back on the table but not blocking — KeyVex continues to ship independently.
 
 **Last Updated**
 
-May 11, 2026 — Day 8 EVENING (~10 PM ET). **21 MCP tools live, server v0.27.0**, 22+ autonomous scrapers running on cron, MCP endpoint at `https://mcp.keyvex.com` and landing page at `https://keyvex.com` + `https://www.keyvex.com` (all three domains with auto-renewing Let's Encrypt TLS), `contact@keyvex.com` is the canonical inbox (forwards to founders' Gmail), `@capitaledge.app` email retired across all surfaces. Battle-test suite green (59 queries, 0 errors). Remaining: 13H discussion (deferred to next session), XBRL Fundamentals (Wave 3 #8, multi-session), OSHA + EPA Enforcement (Wave 4 #12, separate investigation), logo PNGs drop-in, Privacy Policy + Loom + registry submissions, LLC + billing.
+May 12, 2026 — Day 9 EVENING. **24 MCP tools live, server v0.30.0**, 24+ autonomous scrapers running on cron, MCP endpoint at `https://mcp.keyvex.com`, landing page at `https://keyvex.com` (apex + www both mapped, auto-TLS), `contact@keyvex.com` is the canonical inbox. Privacy Policy live at `keyvex.com/privacy`. Animated SVG demo of `unified_search` showcased on both landing and README. Posture / audience copy hardened to enterprise-readable. Derek's dashboard project active again, porting KeyVex scrapers into his side. ~2 weeks to launch per Greg.
 
-**Earlier "Last Updated" snapshot (kept for history):** May 7, 2026 — Day 7 LATER (~9 PM ET). 10 MCP tools live, server v0.17.0, KeyVex rebrand complete, landing page shipped live at `capitaledge-api.web.app`, `https://mcp.keyvex.com` LIVE with auto-managed TLS, GitHub repo renamed to `Keyvex-API`, multi-site Firebase Hosting set up, service-key REST CLI built, Form 278 v1A scraper + MCP tool shipped (10th tool), 13 autonomous scrapers in production.
+**Earlier "Last Updated" snapshots (kept for history):**
+- May 11, 2026 — Day 8 EVENING. 21 MCP tools, server v0.27.0, 22+ autonomous scrapers, three live custom domains, battle-test green (59 queries, 0 errors).
+- May 7, 2026 — Day 7 LATER. 10 MCP tools, server v0.17.0, KeyVex rebrand complete, landing page shipped, `mcp.keyvex.com` LIVE with auto-managed TLS, GitHub repo renamed to `Keyvex-API`, multi-site Firebase Hosting set up, service-key REST CLI built, Form 278 v1A scraper + MCP tool shipped (10th tool).
 
 ### 🌅 Day 8 morning kickoff note (2026-05-08)
 
@@ -797,3 +800,88 @@ That's 10 of 21 tools chained in a single conversation, joined by `ticker` + `bi
 - Customer funnel bottom-up still holds (indie devs → small fintechs → midsize → institutional). The 21-tool surface + the cross-source moat is the indie-dev hook.
 
 **Greg's standing rules + memory feedback all still apply** — see "Standing Rules from Greg" earlier in this file, plus the memory entries listed above.
+
+### 🌙 Day 9 closeout (2026-05-12)
+
+Day 9 was a heavy iteration session — 12 commits, 3 new MCP tools (unified_search + DEF 14A + Treasury auctions), 12 composite indexes, provenance audit, full landing-page rewrite (posture + audience + animated demo SVG), and meaningful copy hardening for enterprise readability.
+
+**Live state at session close:**
+- **24 MCP tools** at `mcp.keyvex.com` v0.30.0 (up from 21 at Day 8 close)
+- **24+ autonomous scrapers** on cron (added scrapeProxyDaily, scrapeTreasuryAuctionsDaily)
+- **Landing page hardened for enterprise audience:** new "Built for production agents" section + audience list expanded to 8 personas (added hedge fund / asset manager / family office, compliance / legal / risk team, investment-bank research desk)
+- **Animated SVG demo of `unified_search`** live on both `keyvex.com#demo` and the GitHub README
+- **Battle test green:** 63 queries · 22 tools · 0 ERROR · 0 EMPTY · 5 SLOW (5 SLOW are all pre-existing v1.1 substring-filter items, not regressions)
+- **Branch + main both at `b5225c4`** on GitHub (`gregorywglenn-spec/Keyvex-API`)
+
+**What shipped today (in commit order):**
+
+| # | Commit | What |
+|---|---|---|
+| 1 | `2945c08` | Provenance audit — 5 new `source_url` fields (FEC candidates / FEC committees / OFAC SDN / FINRA OTC / Bioguide). Every record now traceable to its source-of-record filing |
+| 2 | `2984fb1` | 12 composite indexes for cross-cutting filter combos (politician+ticker+date, ticker+buy/sell, filer+concentration, etc.) — unlocks the political-alpha killer query path |
+| 3 | `755947b` | Landing page "Built for production agents" section — 3 enterprise-relevant cards (indexed queries / audit-grade provenance / idempotent + autonomous) |
+| 4 | `fae5b31` | **v0.28.0 — 22nd MCP tool, `unified_search`** — single MCP tool fans out to 10 collections in parallel for ticker queries, 8 for company_cik, 2 for bioguide_id. Uses Promise.allSettled so one slow source doesn't block the rest |
+| 5 | `f2d6208` | Extended battle test to cover unified_search + multi-envelope shapes. Re-run on v0.28.0: 63 queries · 0 errors · 0 empty |
+| 6 | `b5d4b6a` | First posture rewording — drop "raw" output framing |
+| 7 | `efab71b` | Sweep "raw" across README + Privacy Policy + marketing copy + CLAUDE.md + handoff doc |
+| 8 | `0158cfe` | Posture v3 (raw in → clean out) + audience widened from 5 personas to 8 (added hedge fund / compliance team / investment-bank desk) |
+| 9 | `c8a76fa` | **Animated SVG demo of `unified_search`** — 24-second loop showing fan-out across 10 collections for LMT, embedded on landing + README |
+| 10 | `30ccbce` + `8a5af3d` | **v0.29.0 — 23rd MCP tool, `get_proxy_filings`** — DEF 14A family (Definitive Annual / Additional Materials / Merger-related / Revised). Live smoke: 88 unique filings in 3-day window. Plus a `.claude/` untracking follow-up |
+| 11 | `b5225c4` | **v0.30.0 — 24th MCP tool, `get_treasury_auctions`** — Bills/Notes/Bonds/TIPS/FRN with bid-to-cover, yields, bidder breakdowns, SOMA holdings (Fed QE/QT visibility). Live smoke: 22 auctions in 14-day window |
+| 12 | this commit | CLAUDE.md sweep for Day 9 closeout |
+
+**New memory rule saved Day 9:**
+- `feedback_raw_input_clean_output.md` — "raw" describes the INPUT we ingest (messy government feeds), NEVER the OUTPUT we publish. The narrative arc is "raw in, clean out" — tells the value-add story explicitly.
+
+**Strategic clarity locked Day 9 that holds:**
+
+1. **Scraper attack order for the 2-week pre-launch window** — Greg explicitly authorized the full scraper sweep. We didn't get all 14 done today; queued for next sessions in priority order:
+   - **Next 1-2 sessions (quick wins):** CFTC + OCC + FDIC enforcement extension (extend `get_enforcement_actions` rather than 3 new tools), BLS jobs + MTS macro data
+   - **Investigation-required sessions:** EPA ECHO (date filters silently ignored — API needs strategy work), OSHA (DOL bulk CSV model — different ingestion), NHTSA (auth-gated, needs investigation), FRED (API key needs Greg to provision via stlouisfed.org)
+   - **Adjacent risk batch:** NLRB + HHS-OIG + GAO + FERC
+   - **Final big-bang push:** EDGAR XBRL Fundamentals (multi-session, ~1 week — completes the SEC research surface, competes directly with FMP $22/mo + EODHD $60/mo tiers)
+
+2. **PNG logo drop-in is OFF the open-items list.** Greg confirmed the existing `Key**Vex**` text wordmark in the topbar + the inline-SVG `K` favicon already do the brand work. No PNG files needed.
+
+3. **"Raw" is reclaimed for INPUT only.** Captured as a memory rule. The customer-facing copy now says "KeyVex takes the raw, fragmented data that US government repositories publish — SEC EDGAR XML, House Clerk PDFs, Senate eFD HTML behind a CSRF gate, USAspending JSON, FINRA's paginated APIs — and presents it clean, normalized, and ready to use." Legal posture (Lowe v. SEC) unchanged.
+
+4. **Derek active again.** His dashboard project is unshelved as of Day 9. He's porting KeyVex's scraper logic into his side. KeyVex still stands operationally alone but the future Option B consolidation conversation is back on the table (not blocking).
+
+**Open items rolling to Day 10+:**
+1. Continue scraper sweep per the priority queue (~10 more scrapers + XBRL big-bang before launch)
+2. Pre-launch commercial work (Privacy Policy ✅ done, Loom decided not needed, launch posts draft, DM target list, MCP registry submissions to Anthropic + Smithery + Awesome-MCP + PulseMCP + 5 data marketplaces)
+3. Node.js 20 → 22 upgrade before 2026-10-30 decommission (~5.5 months out)
+4. `firebase-functions` package upgrade (paired with Node 22 since same files)
+5. v1.1 polish — slow substring queries (lobbying 51K-record collection, federal_contracts 5K window) need normalized-name array fields + array-contains indexing
+6. LLC formation + Stripe billing infrastructure (Greg + Derek, not engineering)
+
+**Cross-source play (now 24-tool wide):**
+
+The marquee `unified_search(ticker:"LMT")` demo on the landing page tells the full story in a single tool call. For the manual-composition pattern, here's what a Lockheed Martin agent walk now looks like:
+
+```
+get_congressional_trades(ticker:"LMT")           → senators trading LMT
+  → bioguide_id of each trader
+get_member_profile(bioguide_id:"…")              → party, state, committees
+get_roll_call_votes(legislation_type:"HR")       → defense-bill voting history
+get_fec_candidate_profile(candidate_name:"…")    → FEC candidate + principal committee
+get_lobbying_filings(client_name:"Lockheed")     → LMT's lobbying spend
+get_federal_contracts(recipient_name:"Lockheed") → contracts LMT received
+get_proxy_filings(ticker:"LMT")                  → LMT exec comp + board votes
+get_otc_market_weekly(issue_symbol:"LMT")        → dark-pool activity in LMT shares
+get_insider_transactions(ticker:"LMT")           → LMT insider buys/sells
+get_material_events(ticker:"LMT")                → LMT 8-K corporate events
+get_enforcement_actions(text:"Lockheed")         → SEC/DOJ actions involving LMT
+get_treasury_auctions(security_type:"Note", since:"…")
+                                                 → macro debt-issuance context
+                                                   (paired with congressional debt-ceiling
+                                                   votes for the political-alpha overlay)
+```
+
+That's 12 of 24 tools chained in a single conversation. Plus `unified_search` collapses the first 10 of those into one round trip. No other MCP server in the financial-data space combines this.
+
+**Memory rules active for next session (12 total):**
+- All 11 from Day 8 still apply
+- New Day 9: `feedback_raw_input_clean_output.md`
+
+**For Future Claude starting fresh on Day 10+:** Read `CLAUDE.md` (this file) first. The priority queue at top of "What's Open / Next Up" + the Day 9 closeout above are the load-bearing context. Greg's standing rules + memory entries are unchanged. Don't re-litigate the strategic decisions logged here.
