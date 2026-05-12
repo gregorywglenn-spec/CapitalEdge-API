@@ -38,7 +38,7 @@ import type { FederalContractAward } from "../types.js";
 
 const CONFIG = {
   USER_AGENT:
-    process.env.SEC_USER_AGENT ?? "CapitalEdgeMCP/0.1 contact@capitaledge.app",
+    process.env.SEC_USER_AGENT ?? "KeyVexMCP/0.1 contact@keyvex.com",
   BASE_URL: "https://api.usaspending.gov",
   AWARD_URL_BASE: "https://www.usaspending.gov/award",
   RATE_LIMIT_MS: 200, // generous — USAspending is unrate-limited but be a good citizen

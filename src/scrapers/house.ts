@@ -30,7 +30,7 @@ import type { CongressionalTrade } from "../types.js";
 const CONFIG = {
   USER_AGENT:
     process.env.HOUSE_USER_AGENT ??
-    "CapitalEdgeMCP/0.1 contact@capitaledge.app",
+    "KeyVexMCP/0.1 contact@keyvex.com",
   XML_INDEX: (year: number): string =>
     `https://disclosures-clerk.house.gov/public_disc/financial-pdfs/${year}FD.xml`,
   PDF_URL: (year: number | string, docId: string): string =>

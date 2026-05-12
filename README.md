@@ -241,4 +241,4 @@ Private. No license declared. Reach out if you'd like preview access.
 
 ## Contact
 
-`contact@capitaledge.app` (until `contact@keyvex.com` is operational).
+`contact@keyvex.com`

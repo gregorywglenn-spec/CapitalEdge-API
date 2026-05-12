@@ -489,7 +489,7 @@ Day 7 LATER (2026-05-07) end-of-day. **10 MCP tools live, server v0.17.0, 13 aut
   - DNS: GoDaddy default nameservers (`ns53.domaincontrol.com` + `ns54.domaincontrol.com`) — switched from Afternic Day 7 evening
   - Custom-domain mappings still pending: `mcp.keyvex.com` → `keyvex-mcp` site, `keyvex.com` apex + `www.keyvex.com` → `capitaledge-api` site
 - **Older brand domain:** `capitaledge.app`
-  - Pre-rebrand domain, still owned; email accounts (`contact@capitaledge.app` etc.) still active until `contact@keyvex.com` is set up
+  - Pre-rebrand domain, still owned. **Email accounts on this domain retired Day 8 (2026-05-11).** Customer-facing email is `contact@keyvex.com` everywhere. Any code, doc, or marketing surface still referencing `contact@capitaledge.app` is stale — fix on contact. (Day 8 sweep updated all source code USER_AGENT strings, landing page, README, and marketing copy.)
 - **Capital Edge dashboard project:** `C:\CapitalEdge\` (separate Cowork workspace, owned operationally by Derek). Different Firebase project: `capital-edge-d5038`.
 
 ## Capital Edge Cross-References (sibling project)

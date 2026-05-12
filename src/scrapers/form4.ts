@@ -25,7 +25,7 @@ import type { InsiderTransaction } from "../types.js";
 
 const CONFIG = {
   USER_AGENT:
-    process.env.SEC_USER_AGENT ?? "CapitalEdgeMCP/0.1 contact@capitaledge.app",
+    process.env.SEC_USER_AGENT ?? "KeyVexMCP/0.1 contact@keyvex.com",
   BASE_URL: "https://data.sec.gov",
   EDGAR_URL: "https://www.sec.gov",
   SEARCH_URL: "https://efts.sec.gov/LATEST/search-index",

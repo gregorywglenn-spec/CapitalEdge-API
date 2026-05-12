@@ -43,7 +43,7 @@ import type { CongressionalTrade } from "../types.js";
 const CONFIG = {
   USER_AGENT:
     process.env.SENATE_USER_AGENT ??
-    "CapitalEdgeMCP/0.1 contact@capitaledge.app",
+    "KeyVexMCP/0.1 contact@keyvex.com",
   HOME_URL: "https://efdsearch.senate.gov/search/home/",
   /** The disclaimer-agreement POST goes here, NOT to HOME_URL. The reference
    *  browser scraper (`reference/congressional_scraper.js`, tested live April

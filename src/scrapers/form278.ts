@@ -24,7 +24,7 @@ import { createSession } from "./senate.js";
 
 const CONFIG = {
   USER_AGENT:
-    process.env.SENATE_USER_AGENT ?? "KeyVexMCP/0.1 contact@capitaledge.app",
+    process.env.SENATE_USER_AGENT ?? "KeyVexMCP/0.1 contact@keyvex.com",
   HOME_URL: "https://efdsearch.senate.gov/search/home/",
   SEARCH_URL: "https://efdsearch.senate.gov/search/",
   DATA_URL: "https://efdsearch.senate.gov/search/report/data/",

@@ -34,7 +34,7 @@ import type {
 
 const CONFIG = {
   USER_AGENT:
-    process.env.SEC_USER_AGENT ?? "CapitalEdgeMCP/0.1 contact@capitaledge.app",
+    process.env.SEC_USER_AGENT ?? "KeyVexMCP/0.1 contact@keyvex.com",
   BASE_URL:
     "https://raw.githubusercontent.com/unitedstates/congress-legislators/main",
   PHOTO_BASE_URL: "https://theunitedstates.io/images/congress/original",

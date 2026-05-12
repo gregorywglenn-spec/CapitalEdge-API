@@ -215,7 +215,7 @@ A: Not currently. Enterprise customers can discuss custom-deployment options.
 
 ## Footer
 
-**Email:** `contact@keyvex.com` *(coming online soon — currently `contact@capitaledge.app`)*
+**Email:** `contact@keyvex.com`
 
 **API status:** [https://mcp.keyvex.com](https://mcp.keyvex.com) *(returns JSON; live status indicator coming)*
 
@@ -234,7 +234,7 @@ A: Not currently. Enterprise customers can discuss custom-deployment options.
 1. **Final pricing numbers** — current draft uses Greg's Claude recommendation (Free 5k, Builder $29 / 50k, Pro $199 / 500k). Adjust as discussed.
 2. **The "sister product" reference in Section 5 + 6** — should this name the dashboard explicitly (e.g., "KeyVex Dashboard"), describe it generically ("our analytics product"), or remove the reference until launch?
 3. **Endpoint URL placeholder** — currently shows the real Cloud Functions URL alongside the future `mcp.keyvex.com` mapping. Once domain mapping is live, simplify to just `mcp.keyvex.com`.
-4. **Email** — same flip from `@capitaledge.app` to `@keyvex.com` once the email is set up.
+4. **Email** — flipped to `@keyvex.com` (the `@capitaledge.app` inbox was retired on Day 8).
 5. **Company name in footer** — "[Company Name] LLC" — fill in once the LLC paperwork lands.
 6. **Make the GitHub repo public** — currently private; flip to public when ready for the world to read source. Repo URL is `Keyvex-API` (renamed 2026-05-07; old `CapitalEdge-API` URL still redirects).
 

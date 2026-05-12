@@ -37,7 +37,7 @@
 const SEC_TICKERS_URL =
   "https://www.sec.gov/files/company_tickers_exchange.json";
 const USER_AGENT =
-  process.env.SEC_USER_AGENT ?? "CapitalEdgeMCP/0.1 contact@capitaledge.app";
+  process.env.SEC_USER_AGENT ?? "KeyVexMCP/0.1 contact@keyvex.com";
 
 /** Format of `company_tickers_exchange.json` from SEC.gov */
 interface SecExchangeFile {

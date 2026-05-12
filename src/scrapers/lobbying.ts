@@ -29,7 +29,7 @@ import type { LobbyingActivity, LobbyingFiling } from "../types.js";
 
 const CONFIG = {
   USER_AGENT:
-    process.env.SEC_USER_AGENT ?? "CapitalEdgeMCP/0.1 contact@capitaledge.app",
+    process.env.SEC_USER_AGENT ?? "KeyVexMCP/0.1 contact@keyvex.com",
   BASE_URL: "https://lda.gov/api/v1",
   /**
    * 500ms between requests = 2 req/sec sustained. LDA's anonymous tier
