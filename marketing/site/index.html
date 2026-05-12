@@ -497,9 +497,12 @@ Agent: get_fec_candidate_profile(candidate_name:"&lt;member name&gt;")
           <h3>You'll like KeyVex if you're:</h3>
           <ul>
             <li>An indie dev building an AI agent that reasons over public financial disclosures</li>
-            <li>A small fintech firm that needs clean, normalized SEC + congressional data without standing up your own scraping pipeline</li>
+            <li>A hedge fund, asset manager, or family office that wants every public-disclosure surface piped into your research workflow</li>
+            <li>A fintech firm, prop shop, or trading desk that needs clean, normalized SEC and congressional data without standing up your own scraping pipeline</li>
+            <li>A compliance, legal, or risk team that needs every record traceable back to its source-of-record filing for audit and review</li>
+            <li>An investment-bank research desk or sell-side analyst who wants the full disclosure surface in one query instead of ten browser tabs</li>
             <li>A quant researcher prototyping signals across multiple disclosure sources</li>
-            <li>A product team adding regulatory-data context to an AI assistant</li>
+            <li>A product team adding regulatory-data context to an AI assistant or internal copilot</li>
             <li>An academic studying insider trading, congressional behavior, or market structure</li>
           </ul>
         </div>
@@ -563,11 +566,14 @@ Agent: get_fec_candidate_profile(candidate_name:"&lt;member name&gt;")
     <section id="posture">
       <h2>Pure-publisher posture. Public-record data only.</h2>
       <p class="lead">
-        KeyVex returns clean, normalized, query-ready data from official US
-        government sources — parsed, ticker-resolved, schema-unified, and shaped
-        for direct use by your agent. What we don't do is add derived signals on
-        top: no trading signals, no investment advice, no scoring or ranking of
-        securities, no claims about future performance.
+        KeyVex takes the raw, fragmented data that US government repositories
+        publish — SEC EDGAR XML, House Clerk PDFs, Senate eFD HTML behind a
+        CSRF gate, USAspending JSON, FINRA's paginated APIs, and a dozen more —
+        and presents it clean, normalized, and ready to use. Parsed,
+        ticker-resolved, schema-unified, idempotent — shaped for your agent
+        to query directly. What we don't add on top is derived signals: no
+        trading recommendations, no investment advice, no scoring or ranking
+        of securities, no claims about future performance.
       </p>
       <p>
         This isn't a marketing distinction — it's a deliberate legal posture
