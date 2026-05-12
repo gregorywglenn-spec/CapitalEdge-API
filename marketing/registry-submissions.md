@@ -1,40 +1,69 @@
-# MCP Registry Submissions — Prep Notes
+# KeyVex Distribution Playbook — Where to List
 
-**Status:** ready-to-submit drafts. None of these have been submitted yet. Submit in the order below; each has its own approval lag.
+**Status (Day 9 / 2026-05-12):** all pre-submission prerequisites complete. Drafts below are ready to copy-paste-and-send. Strategy is **list everywhere KeyVex can plausibly fit**, in parallel, sequenced by engineering effort (lowest first). Each listing is a free inbound funnel — the downside is bounded engineering time, the upside is uncapped.
 
-**Why submit now (pre-LLC):** registry listings are free, don't display pricing, and don't require any legal entity. Approval lag is the long pole — start the clock now so we're listed when launch happens.
-
-**Why NOT submit before custom domain mapping:** registries link directly to your endpoint URL. Submitting with the bare Cloud Functions URL works but looks unprofessional. **Recommend doing the `mcp.keyvex.com` domain mapping first** (~30 min including DNS propagation), then submitting registry entries pointing at the clean URL.
+| Prereq | Status |
+|---|---|
+| `mcp.keyvex.com` live + TLS | ✅ |
+| `keyvex.com` apex + `www.keyvex.com` live | ✅ |
+| GitHub repo `gregorywglenn-spec/Keyvex-API` | ✅ |
+| README polished for 21-tool state | ✅ |
+| `contact@keyvex.com` operational (Gmail forward) | ✅ |
+| Privacy Policy at `keyvex.com/privacy` | ✅ |
+| Health check returns version + 21 tools | ✅ |
+| GIF / screenshot showing real tool call | 🟡 nice-to-have |
 
 ---
 
-## 1. Anthropic Official MCP Directory (highest priority)
+## Two channel categories
 
-**What it is:** The first-party registry that powers the "Connectors" UI in claude.ai and Claude Desktop. Listed servers can be one-click installed by users. Highest legitimacy signal there is.
+KeyVex fits in **two distinct distribution worlds**. Each reaches a different buyer segment. We're listing in both.
 
-**Submission process:** GitHub PR to Anthropic's MCP server repository.
+| Category | Audience reached | Engineering cost | Effort per listing |
+|---|---|---|---|
+| **MCP-native registries** | Indie devs + agent builders + Claude / Cursor / Anthropic ecosystem | Zero — paperwork only | ~30 min each |
+| **Data marketplaces** | AI training labs + enterprise data teams + analytics buyers | Small — wrapping our data in their delivery format | ~2-3 days each (one-time setup; tiny ongoing maintenance) |
 
-**URL:** https://github.com/anthropics/mcp-servers (verify exact path before submitting — Anthropic occasionally moves things)
+Total engineering effort to list in ALL 9+ venues: roughly **1-2 weeks of focused work spread across them**, plus paperwork time. None of this is blocking. Submit in any order.
 
-**Approval timeline:** typically 5-15 business days. Anthropic reviews each submission for security + correctness + tool-description quality.
+---
 
-**What we submit:** A new entry in their server catalog YAML/JSON. Format varies; check the contributing guide in the repo.
+# PART A — MCP-native registries (paperwork only)
 
-**Draft entry:**
+## A1. Anthropic Official MCP Directory (highest priority)
+
+**What it is:** First-party registry powering Claude Desktop / claude.ai "Connectors" UI. Listed servers can be one-click installed by users. Highest legitimacy signal.
+
+**Submission:** GitHub PR to `https://github.com/anthropics/mcp-servers` (verify exact path + contributing guide before opening — Anthropic occasionally restructures).
+
+**Approval timeline:** 5-15 business days.
+
+**Audience:** Claude users (consumer + developer) who browse the in-app connector list. Heaviest reach for the indie-dev + agent-builder segment.
+
+### Draft entry (YAML — per their template)
 
 ```yaml
 - name: keyvex
+  display_name: KeyVex
   description: |
-    US public financial disclosures as agent-native tools — congressional
-    trades, insider transactions (Form 4), institutional holdings (13F),
-    activist stakes (13D/G), planned insider sales (Form 144), federal
-    contracts, lobbying disclosures, 8-K material events, and member
-    profiles + committee assignments. Pure-publisher posture; no derived
-    signals. 13 sources combined into one queryable surface.
-  category: Financial
+    The MCP server for US public financial disclosures. 21 tools across
+    22+ official US government sources — congressional trades, executive
+    insider transactions (Form 4), institutional holdings (13F), mutual
+    fund holdings (N-PORT), activist stakes (13D/G), planned insider sales
+    (Form 144), tender offers (Schedule TO), IPO + shelf registrations
+    (S-1/S-3), private placements (Form D), federal contracts (USAspending),
+    lobbying spend (LDA), material events (8-K), member profiles +
+    committee assignments, FEC campaign finance, congressional bills +
+    roll-call votes, FINRA OTC dark-pool volume, SEC + DOJ enforcement
+    actions, OFAC sanctions, and Federal Register documents. Designed for
+    AI agents from the ground up — agent-native tool descriptions, rich
+    filter parameters, single Bearer-authenticated endpoint. Pure-publisher
+    posture; no derived signals.
+  category: Finance
   url: https://mcp.keyvex.com
   homepage: https://keyvex.com
-  documentation: https://github.com/<TBD>/keyvex#readme
+  documentation: https://github.com/gregorywglenn-spec/Keyvex-API#readme
+  privacy_policy: https://keyvex.com/privacy
   authentication:
     type: bearer
     header: Authorization
@@ -51,115 +80,262 @@
     - get_member_profile
     - get_material_events
     - get_lobbying_filings
+    - get_annual_financial_disclosures
+    - get_fec_candidate_profile
+    - get_tender_offers
+    - get_bills
+    - get_roll_call_votes
+    - get_otc_market_weekly
+    - get_private_placements
+    - get_enforcement_actions
+    - get_nport_filings
+    - get_registration_statements
+    - get_ofac_sdn
+    - get_federal_register_documents
 ```
 
-**Pre-submission checklist:**
+### PR description draft
 
-- [ ] Custom domain `mcp.keyvex.com` is mapped + serving HTTPS
-- [ ] GitHub repo renamed `CapitalEdge-API` → `keyvex` (or pick final repo name)
-- [ ] README is polished (the rewrite from v0.15.0 is a good start)
-- [ ] `contact@keyvex.com` email is operational
-- [ ] Health check at GET / returns clean version + tool list (already does)
-- [ ] At least one demo (screenshot or recording) showing tool calls in action
-- [ ] Privacy Policy exists at a public URL (Anthropic may require this for paid tiers; not strictly required for free preview)
-
-**Risk:** if our endpoint is rate-limit-fragile or has uptime issues, Anthropic may reject or delist later. Our autonomous-pipeline + Cloud Functions setup is solid; this shouldn't be an issue.
+(Same as before — see archived earlier version in git history at `bd38004`. Hero example with the LMT cross-source query + pure-publisher posture explanation.)
 
 ---
 
-## 2. Smithery (https://smithery.ai)
+## A2. Smithery (https://smithery.ai)
 
-**What it is:** Third-party MCP registry. Popular with indie agent builders. Lower legitimacy than Anthropic's directory but faster approval and broader reach into experimental projects.
+**What it is:** Third-party MCP registry, popular with indie agent builders. Lower legitimacy than Anthropic, faster approval, broader reach into experimental projects.
 
-**Submission process:** Web form on smithery.ai. Some submissions are auto-approved if metadata is correct; others go through manual review.
+**Submission:** Web form on smithery.ai. Some auto-approved; others manual review.
 
-**Approval timeline:** typically 1-3 business days for auto-approved; longer for manual review.
+**Approval timeline:** 1-3 business days for auto-approved.
 
-**Required metadata:**
+**Audience:** Hobbyist + early-adopter agent builders.
 
-- Server name: `keyvex`
-- Display name: `KeyVex`
-- Short description (1 sentence): `MCP server for US public financial disclosures — congressional trades, insider trades, 13F, lobbying, federal contracts, 8-K filings, member profiles.`
-- Category: `Finance` or `Government Data` (pick the closest match in their taxonomy at submission time)
-- URL: `https://mcp.keyvex.com`
-- Authentication: Bearer token
-- Pricing model: Freemium
-- Source repo (optional): GitHub link
-- Tags: `finance`, `sec-edgar`, `congress`, `insider-trading`, `lobbying`, `government-data`, `agent-tools`
+### Form fields to fill
 
-**Pre-submission checklist:**
-
-- [ ] All Anthropic-directory pre-submission items
-- [ ] Smithery account created (free)
-
-**Strategy:** submit 1-2 days after the Anthropic submission. If Anthropic approves first, the Smithery entry can reference Anthropic-Connector status which boosts trust signal.
-
----
-
-## 3. PulseMCP (https://www.pulsemcp.com)
-
-**What it is:** Aggregator that crawls and lists MCP servers from many sources. Self-submission is fast; auto-discovery is also possible if you're listed elsewhere first.
-
-**Submission process:** simpler than Smithery — typically a single form with name, description, URL, tags.
-
-**Approval timeline:** usually within 24 hours.
-
-**Strategy:** submit last. Once Anthropic + Smithery have us, PulseMCP's discovery is partly automatic via their crawler — we may show up without active submission.
+| Field | Value |
+|---|---|
+| Server name | `keyvex` |
+| Display name | `KeyVex` |
+| Short description | The MCP server for US public financial disclosures — 21 tools across 22+ government sources covering congressional trades, insider activity, institutional holdings, lobbying spend, federal contracts, FEC campaign finance, bills + roll-call votes, dark-pool volume, OFAC sanctions, Federal Register, and more. |
+| Category | `Finance` or `Government Data` (pick whichever exists in their current taxonomy) |
+| URL | `https://mcp.keyvex.com` |
+| Homepage | `https://keyvex.com` |
+| Documentation | `https://github.com/gregorywglenn-spec/Keyvex-API#readme` |
+| Authentication | Bearer token (`Authorization: Bearer <KEY>`) |
+| Pricing | Freemium (5,000 calls/month free) |
+| Source repo | `https://github.com/gregorywglenn-spec/Keyvex-API` |
+| Contact | `contact@keyvex.com` |
+| Tags | `finance`, `sec-edgar`, `congress`, `insider-trading`, `lobbying`, `government-data`, `agent-tools`, `dark-pool`, `fec`, `ofac`, `federal-register` |
 
 ---
 
-## 4. Awesome-MCP GitHub list
+## A3. Awesome-MCP GitHub list (https://github.com/punkpeye/awesome-mcp-servers)
 
-**What it is:** A community-curated list of MCP servers, structured as a markdown file in a GitHub repo. Lower-effort listing; high SEO value because the repo gets a lot of stars.
+**What it is:** Community-curated markdown list of MCP servers. Low effort, decent SEO upside (repo has many GitHub stars).
 
-**URL:** https://github.com/punkpeye/awesome-mcp-servers (verify before submitting — the canonical "awesome-mcp" repo can shift)
+**Submission:** GitHub PR adding a one-line entry to the appropriate category section.
 
-**Submission process:** GitHub PR adding a one-line entry to the appropriate category section.
+**Approval timeline:** Maintainer-dependent. Days, sometimes weeks.
 
-**Draft entry:**
+### Draft entry
 
 ```markdown
-- [KeyVex](https://keyvex.com) - US public financial disclosures (congressional trades, insider trades, 13F, lobbying, federal contracts, 8-K filings, member profiles) — 13 data sources combined into one MCP server. Pure-publisher posture, no derived signals.
+- [KeyVex](https://keyvex.com) - The MCP server for US public financial disclosures: 21 tools across 22+ official US government sources (SEC EDGAR forms, USAspending, FEC, congress.gov, Senate eFD + House Clerk PTRs, FINRA OTC dark-pool, OFAC sanctions, Federal Register, SEC+DOJ enforcement). Pure-publisher posture, no derived signals.
 ```
 
-**Approval timeline:** depends on the maintainer. Typically days, sometimes weeks. Easy to check the open PR list to see if the repo is actively maintained.
+---
 
-**Strategy:** submit alongside Smithery. Low effort, decent SEO upside.
+## A4. PulseMCP (https://www.pulsemcp.com)
+
+**What it is:** Aggregator that crawls + lists MCP servers from many sources. Self-submission is fast; auto-discovery often picks us up after we're on other registries.
+
+**Submission:** Single form with name, description, URL, tags. **Same field values as Smithery — reuse verbatim.**
+
+**Approval timeline:** Usually < 24 hours.
+
+**Strategy:** Submit last. May be picked up automatically once Anthropic + Smithery list us.
 
 ---
 
-## Submission order
+# PART B — Data marketplaces (engineering required)
 
-1. **Today / this week:** map `mcp.keyvex.com` domain + verify endpoint serves cleanly
-2. **Same day after domain works:** rename GitHub repo if doing it; polish README hero example
-3. **Day 1:** Anthropic MCP directory (PR submitted)
-4. **Day 2-3:** Smithery + Awesome-MCP submissions
-5. **Day 5+:** PulseMCP (or wait for auto-discovery)
+These reach buyers KeyVex would otherwise never see — AI training labs, enterprise data teams, analytics buyers. The "lift" is wrapping our existing Firestore-backed data in their native delivery format.
 
-Total elapsed: ~1 week of submission work, then 1-3 weeks of approval lag. Plan for full registry coverage by ~3 weeks from first submission.
+## B1. Defined.ai (https://defined.ai)
 
----
+**What it is:** Marketplace specifically connecting data providers with AI training labs. Sells curated datasets to research teams at AI companies.
 
-## What NOT to do
+**Audience:** AI / ML research teams at labs and AI-first startups.
 
-- **Don't submit to multiple registries with different metadata.** Pick one canonical description / category / tag list and reuse it everywhere. Inconsistent metadata across registries makes you look hasty / low-quality.
+**Submission:** Data-provider onboarding form on their site. They accept flexible formats (CSV, JSON, API endpoints).
 
-- **Don't submit before the custom domain is mapped.** A `*.cloudfunctions.net` URL in a registry listing reads as "developer's hobby project," not "real product."
+**Engineering effort:** **~half a day to a day.** Fill out their data-provider application, point them at either (a) our existing MCP endpoint with a key, or (b) a recurring CSV/Parquet dump from Firestore.
 
-- **Don't submit before the LLC is formed if any registry asks about the operating company.** Most don't, but read the submission form before filling it out.
+**Fit:** Strong. KeyVex's data (regulatory text, structured filings, congressional behavior, lobbying disclosures) is exactly the kind of domain-expert training material vertical-AI labs want.
 
-- **Don't list inflated record counts or feature claims.** Registries that catch this delist or mark you down.
+**Draft description:** "Recurring US public financial disclosure feed — 22+ government sources covering SEC filings, congressional activity, FEC campaign finance, lobbying spend, federal contracts, sanctions, and Federal Register documents. Designed for training vertical-AI models in finance, regulatory compliance, and political-economy domains."
 
-- **Don't link to a placeholder landing page.** If `keyvex.com` shows the registrar parking page, fix that first. The domain mapping is wasted if the domain is empty.
+**Action item:** verify submission form is open + apply via their data-provider portal.
 
 ---
 
-## After submissions are in
+## B2. Scale AI (https://scale.com)
 
-While waiting for approvals, the high-leverage parallel work is:
+**What it is:** Same category as Defined.ai — pairs data providers with AI labs. Better-known brand, possibly higher bar to list.
 
-- **Write the launch posts** (Twitter thread, Show HN, Reddit) — drafts ready to go the moment Anthropic approval lands
-- **Build a 3-5 minute Loom demo video** showing the political-alpha cross-source query
-- **DM target list** — 10-20 specific accounts (AI-tool builders, fintech-AI Twitter, niche newsletter writers) to outreach the moment we have something to point at
+**Audience:** Same as Defined.ai — research teams at large + mid-size AI companies.
 
-These three together drive the actual launch traffic. Registry listings make you findable; launch posts drive people to be findable.
+**Submission:** Partner / data-provider intake form on their site.
+
+**Engineering effort:** Same as Defined.ai — half a day to a day.
+
+**Fit:** Strong. Same logic as Defined.ai.
+
+**Action item:** apply via their data-supplier portal.
+
+---
+
+## B3. Narrative.io (https://narrative.io)
+
+**What it is:** Data subscription marketplace. Lower bar than Snowflake / AWS Data Exchange. Smaller buyer pool but easier to list.
+
+**Audience:** Mid-market data teams + adtech + research.
+
+**Submission:** Data-provider onboarding via their platform.
+
+**Engineering effort:** Half a day to a day. Similar setup pattern to Defined.ai.
+
+**Fit:** Medium. Their main audience leans more toward adtech / consumer data, but our financial-disclosure data should fit their "alternative data" category.
+
+---
+
+## B4. Snowflake Marketplace (https://app.snowflake.com/marketplace)
+
+**What it is:** Gold-standard enterprise data marketplace. Big companies subscribe to "Data Shares" they can query directly via SQL from inside Snowflake.
+
+**Audience:** Enterprise data teams — investment banks, hedge funds, large analytics shops, compliance teams.
+
+**Submission:** Become a Snowflake provider, publish a "Data Share" via their UI, submit for marketplace listing.
+
+**Engineering effort:** **~2-3 days end-to-end.**
+- Sign up for Snowflake (free tier exists for setup; pricing kicks in only when buyers consume)
+- One-time ETL: Firestore → Snowflake tables. Can use Snowflake's native connector or a Cloud Function that runs daily.
+- Configure the "Data Share" in Snowflake's UI
+- Submit for marketplace listing — review window is days to weeks
+
+**Fit:** **Strong for enterprise reach.** Our data is the exact shape Snowflake buyers consume — structured tables they can JOIN against their internal databases. Biggest single distribution channel for enterprise buyers.
+
+**Strategic note:** This is the heaviest lift on the list. Worth doing because enterprise buyers can pay 100× what an indie dev pays — even one enterprise customer makes the engineering effort pay for itself many times over.
+
+---
+
+## B5. AWS Data Exchange (https://aws.amazon.com/data-exchange)
+
+**What it is:** Same shape as Snowflake — distributes data products through AWS. Reaches AWS-native data teams.
+
+**Audience:** AWS-native enterprise data teams (different pool from Snowflake, often the same buyer at a different layer of their stack).
+
+**Submission:** Become an AWS Data Exchange provider, publish data as S3-hosted files with manifest, submit data product for AWS approval.
+
+**Engineering effort:** **~2-3 days engineering + ~1 week wall-clock for AWS review.**
+- Set up an AWS account (we don't have one yet — half a day)
+- Configure recurring data publication to S3 (Cloud Functions can push cross-cloud from Google to AWS)
+- Submit data product through their provider portal
+- AWS review typically ~1 week
+
+**Fit:** Strong for AWS-native enterprise buyers. Complements Snowflake (some buyers prefer one cloud, some the other).
+
+---
+
+## B6. Bright Data partner program (https://brightdata.com)
+
+**What it is:** Top-tier data wholesaler. They have a partner / data-supplier program where they distribute niche datasets.
+
+**Audience:** Bright Data's existing enterprise customer base.
+
+**Submission:** Apply via their partner portal.
+
+**Engineering effort:** Application + review process — exact effort unknown until we apply.
+
+**Fit:** Speculative. They mostly distribute their own scraped data, but they do partner with niche suppliers.
+
+**Strategic note:** Low-cost to apply. Worth a shot.
+
+---
+
+# Submission order + timeline
+
+Sequence by engineering effort. All can happen in parallel.
+
+| Week | Action |
+|---|---|
+| **Today (Week 0)** | Submit all 4 MCP registries — Anthropic PR, Smithery form, Awesome-MCP PR, PulseMCP form. Pure paperwork, ~half a day total. |
+| **Week 0** | Apply to Defined.ai, Scale AI, Narrative.io, Bright Data — data-provider onboarding forms. ~half a day total. |
+| **Week 1-2** | Snowflake Marketplace setup: Firestore → Snowflake ETL + Data Share config. ~2-3 days engineering. |
+| **Week 1-2** | AWS Data Exchange setup: AWS account + S3 manifest + provider submission. ~2-3 days engineering. |
+| **Week 1-4** | Approval lags arriving across all venues — Anthropic ~2 weeks, Smithery / PulseMCP / Awesome-MCP within days, data marketplaces ~1-3 weeks depending on platform. |
+
+Total elapsed: ~3 weeks of submission + ~3 weeks of approval lag = launches arriving over the first month.
+
+---
+
+# Submission checklist (work through in any order)
+
+Pure paperwork (do in any 1-hour block):
+
+- [ ] Anthropic MCP directory PR opened
+- [ ] Smithery form submitted
+- [ ] Awesome-MCP PR opened
+- [ ] PulseMCP form submitted
+
+Data-provider applications (do in any 1-hour block):
+
+- [ ] Defined.ai data-provider application
+- [ ] Scale AI data-supplier application
+- [ ] Narrative.io data-provider onboarding
+- [ ] Bright Data partner program application
+
+Engineering-required (each ~2-3 days):
+
+- [ ] Snowflake Marketplace: ETL pipeline + Data Share published + listing submitted
+- [ ] AWS Data Exchange: AWS account + S3 publication + provider submission
+
+Nice-to-have:
+
+- [ ] Animated GIF (20-30 sec) showing a real tool call — drops into README + Anthropic PR description + every launch post
+
+---
+
+# What NOT to do
+
+- **Don't submit with inconsistent metadata across venues.** Pick the canonical description + tag list above. Reuse verbatim.
+- **Don't list inflated record counts or feature claims.** Numbers in this doc are real and verifiable via `curl https://mcp.keyvex.com` or `npx tsx scripts/battle-test.ts`.
+- **Don't sign exclusivity agreements** with any single marketplace. Each listing should be non-exclusive.
+- **Don't link to anything still labeled "coming soon."** Footer mention of ToS "coming with LLC formation" is fine because it's about LLC paperwork, not the product itself.
+
+---
+
+# After submissions are in (parallel launch prep)
+
+While approvals are pending:
+
+- **Launch posts** — Twitter thread, Show HN, Reddit r/MCP / r/aiagents. Drafts ready to fire on Anthropic-approval day.
+- **20-second GIF** — recorded via Peek on Ubuntu (`sudo apt install peek`). Drops into the README + landing page + every social post.
+- **DM target list** — 10-20 specific accounts (AI-tool builders, fintech-AI Twitter, niche newsletter writers).
+
+---
+
+# Future exploration (post-launch, when these channels are running)
+
+Greg's strategic note (Day 9): once these 9 channels are running, explore **other ways to capture, package, and distribute data** to whoever wants to buy it.
+
+Candidate avenues to investigate later:
+
+- **Direct enterprise sales** — once Snowflake / AWS Data Exchange surface inbound leads, offer custom enterprise tiers with SLAs, dedicated support, custom data slicing.
+- **Vertical-AI training data licensing** — repackage subsets of our data (e.g., "10 years of congressional trades + matched bill votes") as one-time licensed datasets for AI labs training political-economy or regulatory-compliance models.
+- **White-label data feeds** — companies that want our data piped into their own products without the KeyVex brand attached.
+- **Newsletter / report subscriptions** — a separate brand layer that publishes derived insights from KeyVex's raw data (would live with the dashboard product, not KeyVex, per pure-publisher posture).
+- **Academic + research partnerships** — universities studying market structure, political economy, regulatory behavior often want our exact data. Free/discounted access in exchange for citation/co-publication.
+- **API-as-a-product for non-MCP consumers** — a REST wrapper on top of the MCP endpoint for traditional API buyers who don't speak MCP. Same data, different envelope.
+
+None of these are pre-launch work. They're channel-expansion options once the 9-venue foundation is producing inbound funnels.

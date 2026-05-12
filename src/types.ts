@@ -444,6 +444,10 @@ export interface Legislator {
    * can swap the path segment.
    */
   photo_url: string;
+  /** Direct link to the canonical bioguide.congress.gov entry for this
+   *  member. Audit-grade provenance — agents can follow to verify the
+   *  biographical record against the Library of Congress official source. */
+  bioguide_url: string;
   /** All committees + subcommittees this legislator currently sits on. */
   committee_assignments: CommitteeAssignment[];
 }
@@ -1038,6 +1042,9 @@ export interface FecCandidate {
   last_file_date: string;
   /** ISO date FEC last loaded this record into their database. */
   load_date: string;
+  /** Direct link to the canonical FEC candidate page on fec.gov.
+   *  Audit-grade provenance — agents can follow to verify against the source. */
+  fec_url: string;
   /** When KeyVex scraped this record (ISO 8601). */
   scraped_at: string;
 }
@@ -1120,6 +1127,9 @@ export interface FecCommittee {
   first_file_date: string;
   /** ISO date of most recent filing. */
   last_file_date: string;
+  /** Direct link to the canonical FEC committee page on fec.gov.
+   *  Audit-grade provenance — agents can follow to verify against the source. */
+  fec_url: string;
   /** When KeyVex scraped this record (ISO 8601). */
   scraped_at: string;
 }
@@ -1229,6 +1239,10 @@ export interface OfacSdnEntry {
   vessel_owner: string;
   /** Free-text remarks (aliases, DOB / passport refs, address hints). */
   remarks: string;
+  /** Direct link to the OFAC sanctions search detail page for this entry.
+   *  Audit-grade provenance — agents can follow to verify the listing
+   *  against Treasury's official sanctions search portal. */
+  ofac_url: string;
   /** When KeyVex scraped this record. */
   scraped_at: string;
 }
@@ -1649,6 +1663,10 @@ export interface OtcMarketWeekly {
   last_update_date: string;
   /** ISO date of the most recent reported trade in the week. */
   last_reported_date: string;
+  /** Link to the FINRA OTC Transparency portal for this issue.
+   *  FINRA doesn't expose per-row permalinks, but the issue-level page
+   *  shows the same rollup data. Audit-grade provenance. */
+  finra_source_url: string;
   /** When KeyVex scraped this record (ISO 8601). */
   scraped_at: string;
 }

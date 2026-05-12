@@ -111,6 +111,13 @@ function normalize(raw: RawOtcRow, scrapedAt: string): OtcMarketWeekly | null {
     initial_published_date: raw.initialPublishedDate ?? "",
     last_update_date: raw.lastUpdateDate ?? "",
     last_reported_date: raw.lastReportedDate ?? "",
+    // FINRA's OTC Transparency portal exposes per-issue rollup pages
+    // at otctransparency.finra.org. The per-row weekly summary doesn't
+    // have a permalink, but the issue-level page shows the same data.
+    // For ATS_W_VOL_STATS rows (no symbol), point at the firm-level page.
+    finra_source_url: symbol
+      ? `https://otctransparency.finra.org/otctransparency/AtsIssueData?issueSymbol=${encodeURIComponent(symbol)}`
+      : `https://otctransparency.finra.org/otctransparency/AtsData?mpid=${encodeURIComponent(mpid)}`,
     scraped_at: scrapedAt,
   };
 }

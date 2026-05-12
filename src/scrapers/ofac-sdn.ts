@@ -105,6 +105,7 @@ function rowToEntry(fields: string[], scrapedAt: string): OfacSdnEntry | null {
     vessel_flag: nullify(fields[9] ?? ""),
     vessel_owner: nullify(fields[10] ?? ""),
     remarks: nullify(fields[11] ?? ""),
+    ofac_url: `https://sanctionssearch.ofac.treas.gov/Details.aspx?id=${entNum}`,
     scraped_at: scrapedAt,
   };
 }

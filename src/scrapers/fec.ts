@@ -141,6 +141,7 @@ function normalizeCandidate(
     first_file_date: raw.first_file_date ?? "",
     last_file_date: raw.last_file_date ?? "",
     load_date: raw.load_date ?? "",
+    fec_url: `https://www.fec.gov/data/candidate/${raw.candidate_id}/`,
     scraped_at: scrapedAt,
   };
 }
@@ -171,6 +172,7 @@ function normalizeCommittee(
     cycles: Array.isArray(raw.cycles) ? raw.cycles : [],
     first_file_date: raw.first_file_date ?? "",
     last_file_date: raw.last_file_date ?? "",
+    fec_url: `https://www.fec.gov/data/committee/${raw.committee_id}/`,
     scraped_at: scrapedAt,
   };
 }

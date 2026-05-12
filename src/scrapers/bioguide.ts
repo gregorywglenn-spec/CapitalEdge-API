@@ -239,6 +239,7 @@ function normalizeLegislator(
     birthday: raw.bio?.birthday ?? "",
     gender: raw.bio?.gender ?? "",
     photo_url: `${CONFIG.PHOTO_BASE_URL}/${bioguide}.jpg`,
+    bioguide_url: `https://bioguide.congress.gov/search/bio/${bioguide}`,
     committee_assignments: committeeAssignments,
   };
 }
