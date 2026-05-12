@@ -52,6 +52,7 @@ import {
   saveMaterialEvents,
   saveEnforcementActions,
   saveNportFilings,
+  saveOfacSdn,
   saveOtcMarketWeekly,
   savePrivatePlacements,
   saveRegistrationStatements,
@@ -94,6 +95,7 @@ import { scrapeFormDLiveFeed } from "../../src/scrapers/form-d.js";
 import { scrapeEnforcementActions } from "../../src/scrapers/enforcement-actions.js";
 import { scrapeNportLiveFeed } from "../../src/scrapers/nport.js";
 import { scrapeRegistrationStatementsLiveFeed } from "../../src/scrapers/registration-statements.js";
+import { scrapeOfacSdn } from "../../src/scrapers/ofac-sdn.js";
 
 // ─── Common config ──────────────────────────────────────────────────────────
 
@@ -696,6 +698,41 @@ export const scrapeCongressLegislationDaily = onSchedule(
 );
 
 /**
+ * OFAC SDN sanctions list. Daily 6:50 AM ET.
+ *
+ * Cadence: daily. OFAC updates the SDN list when new sanctions are
+ * issued or existing ones modified (multiple times per week). Daily
+ * full-list refresh keeps coverage current; idempotent saves on
+ * ent_num mean unchanged records are no-op upserts.
+ *
+ * Volume: ~19K records, 5.5MB CSV — fits in default 9-min timeout
+ * easily. 1GiB memory to handle the CSV parse + 48 Firestore batches.
+ */
+export const scrapeOfacSdnDaily = onSchedule(
+  {
+    schedule: "50 6 * * *",
+    region: REGION,
+    timeZone: TZ,
+    memory: "1GiB",
+    timeoutSeconds: 540,
+    retryCount: 0,
+  },
+  async () => {
+    const started = Date.now();
+    logger.info("[ofac] starting daily SDN refresh");
+    const entries = await scrapeOfacSdn();
+    logger.info(`[ofac] scraper returned ${entries.length} entries`);
+    let docsWritten = 0;
+    if (entries.length > 0) {
+      const r = await saveOfacSdn(entries);
+      logger.info(`[ofac] saved ${r.saved} to ${r.collection}`);
+      docsWritten = r.saved;
+    }
+    await writeJobMeta("ofacSdnSync", { started, docsWritten });
+  },
+);
+
+/**
  * SEC registration statements (S-1, S-1/A, S-3, S-3/A). Daily 6:45 AM ET.
  *
  * Cadence: daily. Volume ~30-100 filings/day across all four variants.
@@ -941,7 +978,7 @@ export const scheduledHealthCheck = onSchedule(
 // ─── MCP HTTP server (remote-reachable tool API) ──────────────────────────
 
 const SERVER_NAME = "keyvex";
-const SERVER_VERSION = "0.25.0";
+const SERVER_VERSION = "0.26.0";
 
 /**
  * The bearer token clients send in `Authorization: Bearer <key>` headers.

@@ -51,6 +51,8 @@ import type {
   MaterialEventsQuery,
   NportFiling,
   NportFilingsQuery,
+  OfacSdnEntry,
+  OfacSdnQuery,
   OtcMarketWeekly,
   OtcMarketWeeklyQuery,
   PrivatePlacement,
@@ -1627,6 +1629,108 @@ export async function saveForm278Filings(
     }
     await batch.commit();
     saved += chunk.length;
+  }
+
+  return { saved, collection: COLLECTION };
+}
+
+// ─── OFAC SDN (sanctions) query + save ───────────────────────────────────
+
+export async function queryOfacSdn(
+  query: OfacSdnQuery,
+): Promise<QueryResult<OfacSdnEntry>> {
+  if (isStubMode()) {
+    return { results: [], has_more: false };
+  }
+
+  const db = await getLiveDb();
+
+  if (query.ent_num) {
+    const doc = await db.collection("ofac_sdn").doc(query.ent_num).get();
+    if (!doc.exists) return { results: [], has_more: false };
+    return { results: [doc.data() as OfacSdnEntry], has_more: false };
+  }
+
+  let q: FirestoreQuery = db.collection("ofac_sdn");
+
+  if (query.entity_type) {
+    q = q.where("entity_type", "==", query.entity_type.toLowerCase());
+  }
+
+  const userLimit = query.limit ?? 50;
+  const fetchLimit =
+    query.name || query.program || query.remarks
+      ? 5000
+      : Math.max(userLimit * 4, 500);
+  q = q.limit(fetchLimit);
+
+  const snap = await q.get();
+  let docs = snap.docs.map((d) => d.data() as OfacSdnEntry);
+
+  if (query.name) {
+    const needle = query.name.toLowerCase();
+    docs = docs.filter((e) => (e.name ?? "").toLowerCase().includes(needle));
+  }
+  if (query.program) {
+    const needle = query.program.toLowerCase();
+    docs = docs.filter((e) =>
+      (e.program ?? "").toLowerCase().includes(needle),
+    );
+  }
+  if (query.remarks) {
+    const needle = query.remarks.toLowerCase();
+    docs = docs.filter((e) =>
+      (e.remarks ?? "").toLowerCase().includes(needle),
+    );
+  }
+
+  const sortField = query.sort_by ?? "ent_num";
+  const sortOrder = query.sort_order ?? "asc";
+  docs.sort((a, b) => {
+    let av: string | number = (a as unknown as Record<string, string>)[sortField] ?? "";
+    let bv: string | number = (b as unknown as Record<string, string>)[sortField] ?? "";
+    // ent_num is a stringified number; sort numerically for sensible order.
+    if (sortField === "ent_num") {
+      av = parseInt(String(av), 10) || 0;
+      bv = parseInt(String(bv), 10) || 0;
+    }
+    if (av === bv) return 0;
+    const cmp = av < bv ? -1 : 1;
+    return sortOrder === "desc" ? -cmp : cmp;
+  });
+
+  const has_more = docs.length > userLimit;
+  const results = docs.slice(0, userLimit);
+  return { results, has_more };
+}
+
+export async function saveOfacSdn(
+  entries: OfacSdnEntry[],
+): Promise<{ saved: number; collection: string }> {
+  if (isStubMode()) {
+    throw new Error(
+      "Cannot save to Firestore in stub mode (no service account at secrets/service-account.json)",
+    );
+  }
+  const COLLECTION = "ofac_sdn";
+  if (entries.length === 0) return { saved: 0, collection: COLLECTION };
+
+  const db = await getLiveDb();
+  const collection = db.collection(COLLECTION);
+  const BATCH_SIZE = 400;
+  let saved = 0;
+
+  for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+    const batch = db.batch();
+    const chunk = entries.slice(i, i + BATCH_SIZE);
+    for (const entry of chunk) {
+      batch.set(collection.doc(entry.ent_num), entry, { merge: true });
+    }
+    await batch.commit();
+    saved += chunk.length;
+    if (saved % 4000 === 0) {
+      console.error(`[firestore]   ofac save progress: ${saved}/${entries.length}`);
+    }
   }
 
   return { saved, collection: COLLECTION };

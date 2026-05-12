@@ -554,6 +554,14 @@
         { "fieldPath": "sec_file_number", "order": "ASCENDING" },
         { "fieldPath": "file_date", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "ofac_sdn",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "entity_type", "order": "ASCENDING" },
+        { "fieldPath": "ent_num", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

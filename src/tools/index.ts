@@ -19,6 +19,7 @@ import * as lobbyingFilings from "./lobbying-filings.js";
 import * as materialEvents from "./material-events.js";
 import * as memberProfile from "./member-profile.js";
 import * as nportFilings from "./nport-filings.js";
+import * as ofacSdn from "./ofac-sdn.js";
 import * as otcMarketWeekly from "./otc-market-weekly.js";
 import * as plannedInsiderSales from "./planned-insider-sales.js";
 import * as privatePlacements from "./private-placements.js";
@@ -51,6 +52,7 @@ export const TOOLS: ToolModule[] = [
   enforcementActions,
   nportFilings,
   registrationStatements,
+  ofacSdn,
 ];
 
 export function findTool(name: string): ToolModule | undefined {

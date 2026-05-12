@@ -84,6 +84,7 @@ import {
   saveForm278Filings,
   saveEnforcementActions,
   saveNportFilings,
+  saveOfacSdn,
   saveOtcMarketWeekly,
   savePrivatePlacements,
   saveRegistrationStatements,
@@ -141,6 +142,7 @@ import { scrapeFormDLiveFeed } from "./scrapers/form-d.js";
 import { scrapeEnforcementActions } from "./scrapers/enforcement-actions.js";
 import { scrapeNportLiveFeed } from "./scrapers/nport.js";
 import { scrapeRegistrationStatementsLiveFeed } from "./scrapers/registration-statements.js";
+import { scrapeOfacSdn } from "./scrapers/ofac-sdn.js";
 import {
   listTrackedFunds,
   scrape13FByFund,
@@ -792,6 +794,23 @@ const COMMANDS: Record<string, CliCommand> = {
         );
       }
       return committees;
+    },
+  },
+  "ofac-sdn": {
+    description:
+      "Download the OFAC Specially Designated Nationals (SDN) list (~19K records, 5.5MB CSV). Full-list refresh — no incremental option. Add --save to write to ofac_sdn Firestore collection. Idempotent on ent_num.",
+    run: async (args) => {
+      const entries = await scrapeOfacSdn();
+      if (hasSaveFlag(args)) {
+        console.error(
+          `[save] Writing ${entries.length} OFAC SDN entries to Firestore...`,
+        );
+        const result = await saveOfacSdn(entries);
+        console.error(
+          `[save] Saved ${result.saved} entries to ${result.collection}`,
+        );
+      }
+      return entries;
     },
   },
   "reg-stmts": {

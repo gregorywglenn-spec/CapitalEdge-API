@@ -1125,6 +1125,67 @@ export interface FecCommittee {
 }
 
 /**
+ * OFAC Specially Designated National (SDN) entry — a person, entity,
+ * vessel, or aircraft sanctioned by the US Treasury OFAC under one or
+ * more sanctions programs (Cuba, Iran, Russia/SDGT, NK, etc.).
+ *
+ * US persons (citizens, residents, companies) are prohibited from
+ * transacting with SDNs. Banks screen against this list daily.
+ *
+ * Source: sanctionslistservice.ofac.treas.gov/api/publicationpreview/exports/sdn.csv
+ *  (12-column CSV, ~19K records; OFAC uses '-0-' as the empty-field
+ *  sentinel which we normalize to "").
+ *
+ * Companion files (alternate names, addresses) are available separately
+ * — v1A keeps just the primary SDN.csv; aliases + addresses are v1.1.
+ */
+export interface OfacSdnEntry {
+  /** OFAC-assigned entity number, primary key. */
+  ent_num: string;
+  /** Primary listed name. */
+  name: string;
+  /** "individual" | "entity" | "vessel" | "aircraft" | "" (when not surfaced). */
+  entity_type: string;
+  /** Sanctions program(s) the entry falls under (e.g., "CUBA", "IRAN",
+   *  "SDGT", "UKRAINE-EO13662"). May be comma-delimited for multi-program. */
+  program: string;
+  /** For individuals: title / honorific (often empty). */
+  title: string;
+  /** Vessel: call sign. */
+  call_sign: string;
+  /** Vessel: type (e.g., "Cargo", "Tanker"). */
+  vessel_type: string;
+  /** Vessel: tonnage. */
+  tonnage: string;
+  /** Vessel: gross registered tonnage. */
+  gross_registered_tonnage: string;
+  /** Vessel: flag state. */
+  vessel_flag: string;
+  /** Vessel: owner. */
+  vessel_owner: string;
+  /** Free-text remarks (aliases, DOB / passport refs, address hints). */
+  remarks: string;
+  /** When KeyVex scraped this record. */
+  scraped_at: string;
+}
+
+export interface OfacSdnQuery {
+  /** Direct ent_num lookup. */
+  ent_num?: string;
+  /** Substring match against name (case-insensitive). */
+  name?: string;
+  /** Filter to "individual" | "entity" | "vessel" | "aircraft". */
+  entity_type?: string;
+  /** Substring against program field (e.g., "RUSSIA", "IRAN", "CUBA"). */
+  program?: string;
+  /** Substring against remarks (aliases, DOB hints, etc.). */
+  remarks?: string;
+  sort_by?: "ent_num" | "name";
+  sort_order?: "asc" | "desc";
+  limit?: number;
+}
+
+/**
  * SEC registration statement (Form S-1 / S-3 family) — securities offering
  * registration. One record per filing. Filed when a company is registering
  * new securities for public sale.
