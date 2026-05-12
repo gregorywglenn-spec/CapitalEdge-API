@@ -1429,7 +1429,7 @@ export interface EnforcementAction {
    *  CFTC: "cftc-{releaseNumber}" (e.g., "cftc-9230-26"). */
   action_id: string;
   /** Issuing agency. */
-  source: "sec" | "doj" | "cftc";
+  source: "sec" | "doj" | "cftc" | "occ" | "fdic";
   /** Title / headline of the press release. */
   title: string;
   /** Short summary (DOJ teaser field, or first sentence of SEC description). */

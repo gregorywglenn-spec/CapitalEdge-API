@@ -28,6 +28,11 @@ const CONFIG = {
   SEC_RSS_URL: "https://www.sec.gov/news/pressreleases.rss",
   DOJ_API_URL: "https://www.justice.gov/api/v1/press_releases.json",
   CFTC_INDEX_URL: "https://www.cftc.gov/PressRoom/PressReleases",
+  OCC_INDEX_URL_TEMPLATE:
+    "https://www.occ.treas.gov/news-issuances/news-releases/{year}/index-news-releases-{year}.html",
+  FDIC_INDEX_URL: "https://www.fdic.gov/news/press-releases",
+  /** Browser-style UA — FDIC and OCC are Drupal-fronted and reject bare bot UAs. */
+  BROWSER_UA: "Mozilla/5.0 (compatible; KeyVexBot/1.0; +https://keyvex.com)",
   RATE_LIMIT_MS: 200,
   /** Max number of pages of DOJ records to pull per run (20 records / page).
    *  10 pages = 200 most-recent records, plenty for daily refresh. */
@@ -366,6 +371,164 @@ export async function scrapeCftcEnforcementHtml(): Promise<EnforcementAction[]> 
   return out;
 }
 
+// ─── OCC (HTML index — Drupal, no RSS, browser-UA required) ───────────────
+
+/**
+ * OCC publishes news releases at /news-issuances/news-releases/<year>/.
+ * The yearly index page mixes news releases (`nr-occ-...`, `nr-ia-...`)
+ * with bulletins (`bulletins/...`). v1A keeps only news releases — the
+ * bulletins are routine regulatory paperwork, not enforcement/news.
+ *
+ * Each row in the Drupal "usa-collection" template has:
+ *   - `<li class="usa-collection__meta-item item-date">May 08, 2026</li>`
+ *   - `<h3 class="usa-collection__heading"><a href="...">TITLE</a></h3>`
+ *
+ * The date format is "MMM DD, YYYY"; we parse via Date.parse() and emit ISO.
+ *
+ * OCC's CDN rejects bare `KeyVexMCP/...` User-Agent strings. Use the
+ * configured browser-style UA defined in CONFIG.BROWSER_UA.
+ */
+export async function scrapeOccEnforcementHtml(
+  year = new Date().getFullYear(),
+): Promise<EnforcementAction[]> {
+  const scrapedAt = new Date().toISOString();
+  const url = CONFIG.OCC_INDEX_URL_TEMPLATE.replace(/\{year\}/g, String(year));
+  console.error(`[occ enforcement] Fetching ${year} index HTML...`);
+  await sleep(CONFIG.RATE_LIMIT_MS);
+
+  const res = await fetch(url, {
+    headers: { "User-Agent": CONFIG.BROWSER_UA, Accept: "text/html" },
+    redirect: "follow",
+  });
+  if (!res.ok) {
+    throw new Error(`OCC HTML HTTP ${res.status} ${res.statusText} — ${url}`);
+  }
+  const html = await res.text();
+  const $ = cheerio.load(html);
+
+  const out: EnforcementAction[] = [];
+  // Each release sits inside a "usa-collection__item" <li>. The collection
+  // structure puts the date <li> as a sibling of the heading <h3>, both
+  // children of the wrapping <li>.
+  $("li.usa-collection__item, .usa-collection__item, .item-list--news-release li").each(
+    (_, el) => {
+      const $el = $(el);
+      const dateText = $el.find("li.item-date, .item-date").first().text().trim();
+      const $link = $el.find("h3.usa-collection__heading a").first();
+      if (!dateText || $link.length === 0) return;
+
+      const href = $link.attr("href") ?? "";
+      const title = $link.text().trim();
+      if (!href || !title) return;
+      // News-release filter: keep `nr-occ-` and `nr-ia-` (interagency), skip bulletins.
+      if (
+        !href.includes("/news-releases/") ||
+        !(href.includes("/nr-occ-") || href.includes("/nr-ia-"))
+      ) {
+        return;
+      }
+      // Parse "May 08, 2026" → ISO. Fallback: leave empty.
+      const parsed = new Date(dateText);
+      const isoDate = Number.isNaN(parsed.getTime())
+        ? ""
+        : parsed.toISOString().split("T")[0]!;
+      const slug = href
+        .split("/")
+        .filter(Boolean)
+        .pop()
+        ?.replace(/\.html?$/i, "") ?? "";
+      if (!isoDate || !slug) return;
+
+      out.push({
+        action_id: `occ-${slug}`,
+        source: "occ",
+        title,
+        teaser: "",
+        description: "",
+        published_date: isoDate,
+        url: href.startsWith("http") ? href : `https://www.occ.treas.gov${href}`,
+        agency_component: "",
+        release_number: slug,
+        topics: [],
+        scraped_at: scrapedAt,
+      });
+    },
+  );
+
+  console.error(`[occ enforcement] Parsed ${out.length} news releases (${year})`);
+  return out;
+}
+
+// ─── FDIC (HTML index — Drupal, no RSS, browser-UA required) ──────────────
+
+/**
+ * FDIC press releases at /news/press-releases. Drupal-fronted; no RSS.
+ *
+ * Each release sits inside an `<article class="node node--news node-teaser">`
+ * with:
+ *   - `<time datetime="ISO-DATE" itemprop="datePublished">DATE</time>`
+ *   - `<p class="news-title"><a href="/news/press-releases/YYYY/SLUG"><span>TITLE</span></a></p>`
+ *
+ * Like OCC, FDIC's CDN rejects bare bot UA strings. Use BROWSER_UA.
+ *
+ * FDIC press releases include bank-failure announcements ("Anchor Bank
+ * Assumes Insured Deposits of...") which are some of the most
+ * agent-relevant FDIC items. v1A scope: title + date + URL only.
+ */
+export async function scrapeFdicEnforcementHtml(): Promise<EnforcementAction[]> {
+  const scrapedAt = new Date().toISOString();
+  console.error("[fdic enforcement] Fetching index HTML...");
+  await sleep(CONFIG.RATE_LIMIT_MS);
+
+  const res = await fetch(CONFIG.FDIC_INDEX_URL, {
+    headers: { "User-Agent": CONFIG.BROWSER_UA, Accept: "text/html" },
+    redirect: "follow",
+  });
+  if (!res.ok) {
+    throw new Error(
+      `FDIC HTML HTTP ${res.status} ${res.statusText} — ${CONFIG.FDIC_INDEX_URL}`,
+    );
+  }
+  const html = await res.text();
+  const $ = cheerio.load(html);
+
+  const out: EnforcementAction[] = [];
+  $("article.node--news").each((_, el) => {
+    const $el = $(el);
+    const datetime = $el.find("time[datetime]").first().attr("datetime") ?? "";
+    const $link = $el
+      .find('p.news-title a[rel="bookmark"]')
+      .first();
+    if (!datetime || $link.length === 0) return;
+
+    const href = $link.attr("href") ?? "";
+    // Title text is wrapped in <span>; .text() gets the unwrapped string either way.
+    const title = $link.text().trim();
+    if (!href || !title) return;
+
+    const isoDate = datetime.slice(0, 10);
+    const slug = href.split("/").filter(Boolean).pop() ?? "";
+    if (!isoDate || !slug) return;
+
+    out.push({
+      action_id: `fdic-${slug}`,
+      source: "fdic",
+      title,
+      teaser: "",
+      description: "",
+      published_date: isoDate,
+      url: href.startsWith("http") ? href : `https://www.fdic.gov${href}`,
+      agency_component: "",
+      release_number: slug,
+      topics: [],
+      scraped_at: scrapedAt,
+    });
+  });
+
+  console.error(`[fdic enforcement] Parsed ${out.length} press releases from index`);
+  return out;
+}
+
 // ─── Combined entry point ──────────────────────────────────────────────────
 
 export interface ScrapeEnforcementOptions {
@@ -377,6 +540,10 @@ export interface ScrapeEnforcementOptions {
   skipDoj?: boolean;
   /** When true, skip the CFTC HTML index fetch. Default false. */
   skipCftc?: boolean;
+  /** When true, skip the OCC HTML index fetch. Default false. */
+  skipOcc?: boolean;
+  /** When true, skip the FDIC HTML index fetch. Default false. */
+  skipFdic?: boolean;
 }
 
 export async function scrapeEnforcementActions(
@@ -412,8 +579,26 @@ export async function scrapeEnforcementActions(
       console.error(`[enforcement] CFTC HTML FAILED — ${msg}`);
     }
   }
+  if (!options.skipOcc) {
+    try {
+      const occ = await scrapeOccEnforcementHtml();
+      all.push(...occ);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[enforcement] OCC HTML FAILED — ${msg}`);
+    }
+  }
+  if (!options.skipFdic) {
+    try {
+      const fdic = await scrapeFdicEnforcementHtml();
+      all.push(...fdic);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[enforcement] FDIC HTML FAILED — ${msg}`);
+    }
+  }
   console.error(
-    `[enforcement] TOTAL: ${all.length} actions across SEC / DOJ / CFTC`,
+    `[enforcement] TOTAL: ${all.length} actions across SEC / DOJ / CFTC / OCC / FDIC`,
   );
   return all;
 }

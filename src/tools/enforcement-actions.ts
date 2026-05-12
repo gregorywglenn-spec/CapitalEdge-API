@@ -29,9 +29,11 @@ import type {
 export const definition: Tool = {
   name: "get_enforcement_actions",
   description: [
-    "Returns SEC + DOJ + CFTC enforcement-related press releases. Use this",
-    "when the user asks about: recent SEC charges, DOJ indictments, CFTC",
-    "derivatives/swaps enforcement, insider trading prosecutions, FCPA",
+    "Returns SEC + DOJ + CFTC + OCC + FDIC enforcement-related press",
+    "releases. Five regulators, one tool. Use this when the user asks about:",
+    "recent SEC charges, DOJ indictments, CFTC derivatives/swaps enforcement,",
+    "OCC national-bank examination actions, FDIC bank-failure announcements",
+    "or insured-deposit transfers, insider trading prosecutions, FCPA",
     "actions, fraud cases, antitrust enforcement, or to add a 'negative",
     "event' flag to a ticker or person by cross-checking against insider",
     "trades, activist filings, or tender offers.",
@@ -54,17 +56,29 @@ export const definition: Tool = {
     "                  jurisdiction, spoofing prosecutions, and policy actions.",
     "                  v1A index-only (no body extracted) — follow `url` for",
     "                  the substantive announcement.",
+    "  source='occ'  — OCC news releases (occ.treas.gov/news-issuances/",
+    "                  news-releases/<year>/...). Covers national-bank",
+    "                  enforcement, examination findings, capital/leverage",
+    "                  rules, interagency announcements. Yearly index. Both",
+    "                  OCC-only (`nr-occ-...`) and interagency (`nr-ia-...`)",
+    "                  releases included; bulletins filtered out.",
+    "  source='fdic' — FDIC press releases (fdic.gov/news/press-releases).",
+    "                  Covers bank failures + insured-deposit transfers,",
+    "                  exam-result releases, deposit-insurance rule changes,",
+    "                  CRA evaluations. Bank-failure announcements are some",
+    "                  of the highest-signal FDIC items for agents.",
     "",
     "v1A scope: metadata + teaser + description (capped ~3000 chars; empty",
     "for CFTC v1A). Full prose lives at `url` — agents follow for the",
     "substantive announcement. Pure-publisher posture: no derived 'severity'",
     "or 'outcome prediction' signals.",
     "",
-    "Identifier format: action_id is 'sec-{guid-or-slug}', 'doj-{uuid}', or",
-    "'cftc-{release-number}' (e.g., 'cftc-9230-26'). Stable across re-scrapes.",
+    "Identifier format: action_id is 'sec-{guid-or-slug}', 'doj-{uuid}',",
+    "'cftc-{release-number}', 'occ-{slug}', or 'fdic-{slug}'. Stable across",
+    "re-scrapes.",
     "",
     "Cross-source tip: pair with get_insider_transactions to detect insider",
-    "trades by executives at companies later named in SEC/DOJ/CFTC charges,",
+    "trades by executives at companies later named in enforcement charges,",
     "or with get_activist_stakes to spot enforcement-driven exit attempts.",
   ].join(" "),
   inputSchema: {
@@ -77,7 +91,7 @@ export const definition: Tool = {
       },
       source: {
         type: "string",
-        enum: ["sec", "doj", "cftc"],
+        enum: ["sec", "doj", "cftc", "occ", "fdic"],
         description: "Filter to one source.",
       },
       title: {
@@ -152,16 +166,13 @@ function validateAndNormalize(raw: unknown): EnforcementActionsQuery {
   }
 
   if (args.source !== undefined) {
-    if (
-      args.source !== "sec" &&
-      args.source !== "doj" &&
-      args.source !== "cftc"
-    ) {
+    const validSources = ["sec", "doj", "cftc", "occ", "fdic"];
+    if (!validSources.includes(args.source as string)) {
       throw new Error(
-        `INVALID source: '${String(args.source)}' — expected 'sec', 'doj', or 'cftc'`,
+        `INVALID source: '${String(args.source)}' — expected one of ${validSources.join(", ")}`,
       );
     }
-    out.source = args.source;
+    out.source = args.source as EnforcementActionsQuery["source"];
   }
 
   if (args.title !== undefined) {
