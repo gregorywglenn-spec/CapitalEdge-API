@@ -802,9 +802,6 @@ export async function queryFederalContractAwards(
   }
   if (query.naics_code) q = q.where("naics_code", "==", query.naics_code);
   if (query.psc_code) q = q.where("psc_code", "==", query.psc_code);
-  if (query.min_amount !== undefined) {
-    q = q.where("award_amount", ">=", query.min_amount);
-  }
 
   const sortField = query.sort_by ?? "last_modified_date";
   const sortOrder = query.sort_order ?? "desc";
@@ -816,10 +813,18 @@ export async function queryFederalContractAwards(
 
   const userLimit = query.limit ?? 50;
 
-  // Same substring-filter consideration as the other collections: when
-  // recipient_name (substring) is set, pull a much larger Firestore window
-  // so the client-side filter sees the full universe.
-  const fetchLimit = query.recipient_name ? 5000 : userLimit + 1;
+  // Substring + range-on-other-field consideration: when recipient_name
+  // (substring) or min_amount (range on a different field than the
+  // orderBy) is set, pull a wider Firestore window so client-side
+  // filtering sees the universe. min_amount is intentionally NOT
+  // pushed down to Firestore because combining range filters on
+  // amount + a date-based orderBy triggers a composite-index requirement
+  // (Firestore docs: "queries with range and inequality filters on
+  // multiple fields require an index"). Client-side handles it cleanly.
+  const fetchLimit =
+    query.recipient_name || query.min_amount !== undefined
+      ? 5000
+      : userLimit + 1;
   q = q.limit(fetchLimit);
 
   const snap = await q.get();
@@ -830,6 +835,9 @@ export async function queryFederalContractAwards(
     docs = docs.filter((c) =>
       (c.recipient_name ?? "").toLowerCase().includes(needle),
     );
+  }
+  if (query.min_amount !== undefined) {
+    docs = docs.filter((c) => c.award_amount >= query.min_amount!);
   }
 
   const has_more = docs.length > userLimit;
@@ -914,12 +922,23 @@ export async function queryLobbyingFilings(
 
   const userLimit = query.limit ?? 50;
 
-  // Substring filters (registrant_name, client_name, government_entity) need
-  // a wider Firestore window so the post-fetch filter sees the full universe.
-  // 5000 ceiling matches other collections.
+  // Substring filters (registrant_name, client_name, government_entity)
+  // need a wide Firestore window because the lobbying collection is huge
+  // (~50K records spanning multiple years). 5000 was too small — verified
+  // empirically: "pfizer" substring missed Pfizer's filings because their
+  // most-recent record was Dec 2024 but the 5000 most-recent records
+  // cover only June 2025 → May 2026.
+  //
+  // 20000 records covers ~2 years of dt_posted at current pace and catches
+  // virtually all real-world substring queries. Trade-off: each query that
+  // triggers this fetches ~40MB. Combine substring filter with a since/until
+  // date range to scope down when possible.
+  //
+  // v1.1 polish: add a normalized-name field at ingest + array-contains
+  // index for sub-second exact-substring matching at any window size.
   const needsClientSideFilter =
     query.registrant_name || query.client_name || query.government_entity;
-  const fetchLimit = needsClientSideFilter ? 5000 : userLimit + 1;
+  const fetchLimit = needsClientSideFilter ? 20000 : userLimit + 1;
   q = q.limit(fetchLimit);
 
   const snap = await q.get();
