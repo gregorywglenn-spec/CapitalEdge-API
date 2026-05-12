@@ -32,6 +32,7 @@ import {
   queryProxyFilings,
   queryRegistrationStatements,
   queryTenderOffers,
+  queryXbrlFundamentals,
 } from "../firestore.js";
 import type {
   UnifiedSearchEnvelope,
@@ -54,14 +55,15 @@ export const definition: Tool = {
     "with a single fan-out.",
     "",
     "Identifier coverage:",
-    "  - ticker → 11 collections (insider_trades, institutional_holdings,",
+    "  - ticker → 12 collections (insider_trades, institutional_holdings,",
     "    congressional_trades, planned_insider_sales, initial_ownership_baselines,",
-    "    activist_ownership, material_events, proxy_filings, tender_offers,",
-    "    registration_statements, otc_market_weekly)",
+    "    activist_ownership, material_events, proxy_filings, xbrl_fundamentals,",
+    "    tender_offers, registration_statements, otc_market_weekly)",
     "  - bioguide_id → 2 collections (congressional_trades, annual_financial_disclosures)",
-    "  - company_cik → 9 collections (insider_trades, planned_insider_sales,",
+    "  - company_cik → 10 collections (insider_trades, planned_insider_sales,",
     "    initial_ownership_baselines, activist_ownership, material_events,",
-    "    proxy_filings, private_placements, registration_statements, nport_filings)",
+    "    proxy_filings, xbrl_fundamentals, private_placements, registration_statements,",
+    "    nport_filings)",
     "  - recipient_uei → 1 collection (federal_contracts)",
     "",
     "Multiple identifiers can be combined to narrow each source's query (e.g.,",
@@ -234,6 +236,22 @@ const ADAPTERS: SourceAdapter[] = [
         ...(q.company_cik !== undefined && { company_cik: q.company_cik }),
         ...(q.since !== undefined && { since: q.since }),
         ...(q.until !== undefined && { until: q.until }),
+        limit,
+      });
+    },
+  },
+  {
+    name: "xbrl_fundamentals",
+    call: (q, limit) => {
+      if (!q.ticker && !q.company_cik) return null;
+      // For unified-search context, agents typically want the most-recent
+      // observation per concept. latest_only:true is the cleanest default.
+      return queryXbrlFundamentals({
+        ...(q.ticker !== undefined && { ticker: q.ticker }),
+        ...(q.company_cik !== undefined && { company_cik: q.company_cik }),
+        ...(q.since !== undefined && { since: q.since }),
+        ...(q.until !== undefined && { until: q.until }),
+        latest_only: true,
         limit,
       });
     },
