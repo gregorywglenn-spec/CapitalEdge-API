@@ -59,6 +59,8 @@ import type {
   OtcMarketWeeklyQuery,
   PrivatePlacement,
   PrivatePlacementsQuery,
+  ConsumerComplaint,
+  ConsumerComplaintsQuery,
   EconomicIndicator,
   EconomicIndicatorsQuery,
   OigExclusion,
@@ -1529,6 +1531,96 @@ export async function saveProxyFilings(
     saved += chunk.length;
   }
 
+  return { saved, collection: COLLECTION };
+}
+
+// ─── CFPB Consumer Complaints query + save ────────────────────────────────
+
+export async function queryConsumerComplaints(
+  query: ConsumerComplaintsQuery,
+): Promise<QueryResult<ConsumerComplaint>> {
+  if (isStubMode()) {
+    return { results: [], has_more: false };
+  }
+  const db = await getLiveDb();
+
+  // Direct doc lookup when id provided.
+  if (query.id) {
+    const doc = await db.collection("consumer_complaints").doc(query.id).get();
+    if (!doc.exists) return { results: [], has_more: false };
+    return { results: [doc.data() as ConsumerComplaint], has_more: false };
+  }
+
+  let q: FirestoreQuery = db.collection("consumer_complaints");
+
+  if (query.product) q = q.where("product", "==", query.product);
+  if (query.sub_product) q = q.where("sub_product", "==", query.sub_product);
+  if (query.state) q = q.where("state", "==", query.state.toUpperCase());
+  if (query.submitted_via) {
+    q = q.where("submitted_via", "==", query.submitted_via);
+  }
+  if (query.timely_response !== undefined) {
+    q = q.where("timely_response", "==", query.timely_response);
+  }
+
+  const sortField = query.sort_by ?? "date_received";
+  const sortOrder = query.sort_order ?? "desc";
+
+  if (query.since) q = q.where(sortField, ">=", query.since);
+  if (query.until) q = q.where(sortField, "<=", query.until);
+
+  q = q.orderBy(sortField, sortOrder);
+
+  const userLimit = query.limit ?? 50;
+
+  // Substring filters (company, issue) need a wide window. Cap at 10K
+  // to balance memory vs coverage.
+  const needsClientSideFilter = query.company || query.issue;
+  const fetchLimit = needsClientSideFilter ? 10000 : userLimit + 1;
+  q = q.limit(fetchLimit);
+
+  const snap = await q.get();
+  let docs = snap.docs.map((d) => d.data() as ConsumerComplaint);
+
+  if (query.company) {
+    const needle = query.company.toLowerCase();
+    docs = docs.filter((c) => c.company.toLowerCase().includes(needle));
+  }
+  if (query.issue) {
+    const needle = query.issue.toLowerCase();
+    docs = docs.filter((c) => c.issue.toLowerCase().includes(needle));
+  }
+
+  const has_more = docs.length > userLimit;
+  const results = docs.slice(0, userLimit);
+  return { results, has_more };
+}
+
+export async function saveConsumerComplaints(
+  complaints: ConsumerComplaint[],
+): Promise<{ saved: number; collection: string }> {
+  if (isStubMode()) {
+    throw new Error(
+      "Cannot save to Firestore in stub mode (no service account at secrets/service-account.json)",
+    );
+  }
+  const COLLECTION = "consumer_complaints";
+  if (complaints.length === 0) {
+    return { saved: 0, collection: COLLECTION };
+  }
+  const db = await getLiveDb();
+  const collection = db.collection(COLLECTION);
+  const BATCH_SIZE = 400;
+  let saved = 0;
+  for (let i = 0; i < complaints.length; i += BATCH_SIZE) {
+    const batch = db.batch();
+    const chunk = complaints.slice(i, i + BATCH_SIZE);
+    for (const c of chunk) {
+      batch.set(collection.doc(c.id), c, { merge: true });
+    }
+    await batch.commit();
+    saved += chunk.length;
+  }
   return { saved, collection: COLLECTION };
 }
 

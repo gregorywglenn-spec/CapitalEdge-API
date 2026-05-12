@@ -55,6 +55,7 @@ import {
   saveNportFilings,
   saveOfacSdn,
   saveOtcMarketWeekly,
+  saveConsumerComplaints,
   saveEconomicIndicators,
   saveOigExclusions,
   savePrivatePlacements,
@@ -82,6 +83,7 @@ import { scrapeProxyLiveFeed } from "../../src/scrapers/proxy.js";
 import { scrapeTreasuryAuctions } from "../../src/scrapers/treasury-auctions.js";
 import { scrapeBlsIndicators } from "../../src/scrapers/bls.js";
 import { scrapeOigExclusions } from "../../src/scrapers/oig-exclusions.js";
+import { scrapeCfpbComplaints } from "../../src/scrapers/cfpb-complaints.js";
 import { scrapeForm144LiveFeed } from "../../src/scrapers/form144.js";
 import { scrapeForm3LiveFeed } from "../../src/scrapers/form3.js";
 import { scrapeForm4LiveFeed } from "../../src/scrapers/form4.js";
@@ -267,6 +269,36 @@ export const scrapeOigExclusionsMonthly = onSchedule(
       docsWritten = r.saved;
     }
     await writeJobMeta("oigExclusionsSync", { started, docsWritten });
+  },
+);
+
+/**
+ * CFPB Consumer Complaints. Fires daily at 8:00 AM ET. 2-day overlap
+ * window, capped at 2000 records per run. Captures the freshest
+ * complaint volume for "what's happening right now" agent queries.
+ * Idempotent on complaint_id.
+ */
+export const scrapeCfpbDaily = onSchedule(
+  {
+    schedule: "0 8 * * *",
+    region: REGION,
+    timeZone: TZ,
+    memory: "512MiB",
+    timeoutSeconds: 540,
+    retryCount: 0,
+  },
+  async () => {
+    const started = Date.now();
+    logger.info("[cfpb-daily] starting (2-day window, max 2000)");
+    const complaints = await scrapeCfpbComplaints({});
+    logger.info(`[cfpb-daily] scraper returned ${complaints.length} complaints`);
+    let docsWritten = 0;
+    if (complaints.length > 0) {
+      const r = await saveConsumerComplaints(complaints);
+      logger.info(`[cfpb-daily] saved ${r.saved} to ${r.collection}`);
+      docsWritten = r.saved;
+    }
+    await writeJobMeta("consumerComplaintsSync", { started, docsWritten });
   },
 );
 
@@ -1147,7 +1179,7 @@ export const scheduledHealthCheck = onSchedule(
 // ─── MCP HTTP server (remote-reachable tool API) ──────────────────────────
 
 const SERVER_NAME = "keyvex";
-const SERVER_VERSION = "0.34.0";
+const SERVER_VERSION = "0.35.0";
 
 /**
  * The bearer token clients send in `Authorization: Bearer <key>` headers.

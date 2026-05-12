@@ -1992,6 +1992,71 @@ export interface ProxyFilingsQuery {
   limit?: number;
 }
 
+// ─── CFPB Consumer Complaints ──────────────────────────────────────────────
+
+/**
+ * One consumer complaint filed with the Consumer Financial Protection Bureau.
+ * The CFPB receives ~10K complaints/day across banks, credit reporting,
+ * mortgage servicers, debt collectors, fintech, and crypto. Each record is
+ * one filing with disposition info (company response, timely-flag, dispute).
+ *
+ * v1A scope: rolling window (most-recent N records on daily cron). The full
+ * historical dataset is 5M+ rows; v1A doesn't ingest history but agents can
+ * follow `cfpb_source_url` for the underlying record.
+ *
+ * Pairs naturally with get_enforcement_actions (CFPB complaints often
+ * precede CFPB/OCC/FDIC enforcement actions against the same company) and
+ * with get_oig_exclusions for compliance/risk profiling.
+ */
+export interface ConsumerComplaint {
+  /** CFPB-assigned complaint_id (stable across re-scrapes). */
+  id: string;
+  product: string;
+  sub_product: string;
+  issue: string;
+  sub_issue: string;
+  /** Financial-institution name as filed. */
+  company: string;
+  /** CFPB-categorized response status (e.g., "Closed with explanation"). */
+  company_response: string;
+  /** Optional public response statement from the company. */
+  company_public_response: string;
+  /** Whether the company responded within CFPB's 15-day timeline. */
+  timely_response: boolean;
+  state: string;
+  zip_code: string;
+  /** "Web" | "Phone" | "Postal mail" | "Fax" | "Referral" | "Email". */
+  submitted_via: string;
+  /** ISO YYYY-MM-DD. */
+  date_received: string;
+  /** ISO YYYY-MM-DD. Date the complaint reached the company. */
+  date_sent_to_company: string;
+  /** Consumer dispute status. Field is mostly "N/A" since CFPB stopped collecting in 2017. */
+  consumer_disputed: string;
+  /** Consumer narrative (when consent given). Often empty. */
+  complaint_narrative: string;
+  tags: string[];
+  /** Public CFPB search-result URL for this complaint. */
+  cfpb_source_url: string;
+  scraped_at: string;
+}
+
+export interface ConsumerComplaintsQuery {
+  id?: string;
+  company?: string;
+  product?: string;
+  sub_product?: string;
+  issue?: string;
+  state?: string;
+  submitted_via?: string;
+  timely_response?: boolean;
+  since?: string;
+  until?: string;
+  sort_by?: "date_received" | "date_sent_to_company";
+  sort_order?: "desc" | "asc";
+  limit?: number;
+}
+
 // ─── HHS-OIG Exclusions (federal healthcare excluded entities) ────────────
 
 /**

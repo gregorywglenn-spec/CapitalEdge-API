@@ -802,6 +802,46 @@
         { "fieldPath": "is_business", "order": "ASCENDING" },
         { "fieldPath": "exclusion_date", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "consumer_complaints",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "product", "order": "ASCENDING" },
+        { "fieldPath": "date_received", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "consumer_complaints",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "state", "order": "ASCENDING" },
+        { "fieldPath": "date_received", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "consumer_complaints",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "sub_product", "order": "ASCENDING" },
+        { "fieldPath": "date_received", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "consumer_complaints",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "submitted_via", "order": "ASCENDING" },
+        { "fieldPath": "date_received", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "consumer_complaints",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "timely_response", "order": "ASCENDING" },
+        { "fieldPath": "date_received", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

@@ -97,6 +97,7 @@ import {
   saveLegislators,
   saveLegislatorsHistorical,
   saveLobbyingFilings,
+  saveConsumerComplaints,
   saveEconomicIndicators,
   saveMaterialEvents,
   saveOigExclusions,
@@ -115,6 +116,7 @@ import {
 import { scrapeTreasuryAuctions } from "./scrapers/treasury-auctions.js";
 import { scrapeBlsIndicators } from "./scrapers/bls.js";
 import { scrapeOigExclusions } from "./scrapers/oig-exclusions.js";
+import { scrapeCfpbComplaints } from "./scrapers/cfpb-complaints.js";
 import {
   scrapeLobbyingByClient,
   scrapeLobbyingByPeriod,
@@ -389,6 +391,23 @@ const COMMANDS: Record<string, CliCommand> = {
         );
       }
       return exclusions;
+    },
+  },
+  cfpb: {
+    description:
+      "Scrape CFPB consumer complaints (rolling 2-day window, capped at 2000 records). Add --save to write to Firestore.",
+    run: async (args) => {
+      const complaints = await scrapeCfpbComplaints({});
+      if (hasSaveFlag(args)) {
+        console.error(
+          `[save] Writing ${complaints.length} CFPB complaints to Firestore...`,
+        );
+        const result = await saveConsumerComplaints(complaints);
+        console.error(
+          `[save] Saved ${result.saved} complaints to ${result.collection}`,
+        );
+      }
+      return complaints;
     },
   },
   "lobbying-registrant": {

@@ -10,6 +10,7 @@ import * as activistStakes from "./activist-stakes.js";
 import * as annualFinancialDisclosures from "./annual-financial-disclosures.js";
 import * as bills from "./bills.js";
 import * as congressionalTrades from "./congressional-trades.js";
+import * as consumerComplaints from "./consumer-complaints.js";
 import * as economicIndicators from "./economic-indicators.js";
 import * as enforcementActions from "./enforcement-actions.js";
 import * as fecCandidateProfile from "./fec-candidate-profile.js";
@@ -64,6 +65,7 @@ export const TOOLS: ToolModule[] = [
   treasuryAuctions,
   economicIndicators,
   oigExclusions,
+  consumerComplaints,
   unifiedSearch,
 ];
 
