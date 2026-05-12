@@ -79,10 +79,11 @@ Several other tools follow the same v1A-metadata / v1.1-substantive-content spli
 ## Public endpoint
 
 ```
-https://mcp.keyvex.com
+https://mcp.keyvex.com         — MCP API endpoint
+https://keyvex.com             — landing page
 ```
 
-Auto-managed TLS via Let's Encrypt. The canonical Cloud Functions URL (`https://us-central1-capitaledge-api.cloudfunctions.net/mcp`) still works and serves the same backend.
+Auto-managed TLS via Let's Encrypt on both. The canonical Cloud Functions URL (`https://us-central1-capitaledge-api.cloudfunctions.net/mcp`) still works and serves the same backend as `mcp.keyvex.com`.
 
 ### Health check (no auth)
 

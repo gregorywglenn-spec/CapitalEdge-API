@@ -481,13 +481,13 @@ Day 7 LATER (2026-05-07) end-of-day. **10 MCP tools live, server v0.17.0, 13 aut
   - TLS auto-managed via Let's Encrypt (renews automatically forever)
   - DNS records added at GoDaddy: CNAME `mcp` → `keyvex-mcp.web.app` + TXT `_acme-challenge.mcp` (ACME challenge token)
   - Verified working: `curl https://mcp.keyvex.com` returns the v0.16.0 health JSON
-- **Live KeyVex landing page** (Day 7): `https://capitaledge-api.web.app`
+- **Live KeyVex landing page** (Day 7, apex DNS landed Day 8): `https://keyvex.com` (and `https://www.keyvex.com`)
   - Static HTML served from `marketing/site/` via the `capitaledge-api` Hosting site (project's default site)
-  - Will eventually be reachable at `https://keyvex.com` once apex DNS is mapped
+  - Also reachable at `https://capitaledge-api.web.app` (the original Firebase Hosting URL)
 - **Brand domain (purchased Day 7-ish, ~$900 aftermarket):** `keyvex.com`
   - Registrar: GoDaddy
   - DNS: GoDaddy default nameservers (`ns53.domaincontrol.com` + `ns54.domaincontrol.com`) — switched from Afternic Day 7 evening
-  - Custom-domain mappings still pending: `mcp.keyvex.com` → `keyvex-mcp` site, `keyvex.com` apex + `www.keyvex.com` → `capitaledge-api` site
+  - **All three custom-domain mappings LIVE as of Day 8 (2026-05-11):** `mcp.keyvex.com` → `keyvex-mcp` site (Cloud Run rewrite); `keyvex.com` apex + `www.keyvex.com` → `capitaledge-api` site (landing page). All TLS managed by Firebase via Let's Encrypt, auto-renewing.
 - **Older brand domain:** `capitaledge.app`
   - Pre-rebrand domain, still owned. **Email accounts on this domain retired Day 8 (2026-05-11).** Customer-facing email is `contact@keyvex.com` everywhere. Any code, doc, or marketing surface still referencing `contact@capitaledge.app` is stale — fix on contact. (Day 8 sweep updated all source code USER_AGENT strings, landing page, README, and marketing copy.)
 - **Capital Edge dashboard project:** `C:\CapitalEdge\` (separate Cowork workspace, owned operationally by Derek). Different Firebase project: `capital-edge-d5038`.
