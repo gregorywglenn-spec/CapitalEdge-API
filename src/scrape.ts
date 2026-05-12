@@ -98,12 +98,17 @@ import {
   saveLegislatorsHistorical,
   saveLobbyingFilings,
   saveMaterialEvents,
+  saveProxyFilings,
 } from "./firestore.js";
 import {
   scrapeBioguideCatalog,
   scrapeBioguideHistorical,
 } from "./scrapers/bioguide.js";
 import { scrape8kByTicker, scrape8kLiveFeed } from "./scrapers/form8k.js";
+import {
+  scrapeProxyByTicker,
+  scrapeProxyLiveFeed,
+} from "./scrapers/proxy.js";
 import {
   scrapeLobbyingByClient,
   scrapeLobbyingByPeriod,
@@ -276,6 +281,49 @@ const COMMANDS: Record<string, CliCommand> = {
         );
       }
       return events;
+    },
+  },
+  proxy: {
+    description:
+      "Scrape recent DEF 14A proxy filings for a single ticker (add --save to write to Firestore). Captures the full DEF 14A family — annual proxy, additional materials, merger-related proxy, revised proxy.",
+    run: async (args) => {
+      const ticker = args.find((a) => !a.startsWith("--"));
+      if (!ticker) {
+        throw new Error("Usage: tsx src/scrape.ts proxy <TICKER> [--save]");
+      }
+      const filings = await scrapeProxyByTicker(ticker);
+      if (hasSaveFlag(args)) {
+        console.error(
+          `[save] Writing ${filings.length} proxy filings to Firestore...`,
+        );
+        const result = await saveProxyFilings(filings);
+        console.error(
+          `[save] Saved ${result.saved} filings to ${result.collection}`,
+        );
+      }
+      return filings;
+    },
+  },
+  "proxy-feed": {
+    description:
+      "Scrape DEF 14A proxy filings across all companies for the last N days (default 7; add --save to write to Firestore). Iterates the four form codes — DEF 14A, DEFA14A, DEFM14A, DEFR14A — and dedups by accession.",
+    run: async (args) => {
+      const positional = args.find((a) => !a.startsWith("--"));
+      const days = positional ? parseInt(positional, 10) : 7;
+      if (Number.isNaN(days) || days < 1) {
+        throw new Error("Days must be a positive integer");
+      }
+      const filings = await scrapeProxyLiveFeed(days);
+      if (hasSaveFlag(args)) {
+        console.error(
+          `[save] Writing ${filings.length} proxy filings to Firestore...`,
+        );
+        const result = await saveProxyFilings(filings);
+        console.error(
+          `[save] Saved ${result.saved} filings to ${result.collection}`,
+        );
+      }
+      return filings;
     },
   },
   "lobbying-registrant": {

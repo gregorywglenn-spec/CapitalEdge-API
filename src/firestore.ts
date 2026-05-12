@@ -59,6 +59,8 @@ import type {
   OtcMarketWeeklyQuery,
   PrivatePlacement,
   PrivatePlacementsQuery,
+  ProxyFiling,
+  ProxyFilingsQuery,
   RegistrationStatement,
   RegistrationStatementsQuery,
   RollCallVote,
@@ -1442,6 +1444,80 @@ export async function saveMaterialEvents(
     const chunk = events.slice(i, i + BATCH_SIZE);
     for (const event of chunk) {
       batch.set(collection.doc(event.id), event, { merge: true });
+    }
+    await batch.commit();
+    saved += chunk.length;
+  }
+
+  return { saved, collection: COLLECTION };
+}
+
+// ─── DEF 14A Proxy filings query + save ────────────────────────────────────
+
+export async function queryProxyFilings(
+  query: ProxyFilingsQuery,
+): Promise<QueryResult<ProxyFiling>> {
+  if (isStubMode()) {
+    return { results: [], has_more: false };
+  }
+
+  const db = await getLiveDb();
+  let q: FirestoreQuery = db.collection("proxy_filings");
+
+  if (query.ticker) q = q.where("ticker", "==", query.ticker);
+  if (query.company_cik) {
+    q = q.where("company_cik", "==", query.company_cik);
+  }
+  if (query.filing_type) q = q.where("filing_type", "==", query.filing_type);
+  if (query.is_merger_related !== undefined) {
+    q = q.where("is_merger_related", "==", query.is_merger_related);
+  }
+  if (query.is_amendment !== undefined) {
+    q = q.where("is_amendment", "==", query.is_amendment);
+  }
+
+  const sortField = query.sort_by ?? "filing_date";
+  const sortOrder = query.sort_order ?? "desc";
+
+  if (query.since) q = q.where(sortField, ">=", query.since);
+  if (query.until) q = q.where(sortField, "<=", query.until);
+
+  q = q.orderBy(sortField, sortOrder);
+
+  const userLimit = query.limit ?? 50;
+  q = q.limit(userLimit + 1);
+
+  const snap = await q.get();
+  const docs = snap.docs.map((d) => d.data() as ProxyFiling);
+
+  const has_more = docs.length > userLimit;
+  const results = docs.slice(0, userLimit);
+  return { results, has_more };
+}
+
+export async function saveProxyFilings(
+  filings: ProxyFiling[],
+): Promise<{ saved: number; collection: string }> {
+  if (isStubMode()) {
+    throw new Error(
+      "Cannot save to Firestore in stub mode (no service account at secrets/service-account.json)",
+    );
+  }
+  const COLLECTION = "proxy_filings";
+  if (filings.length === 0) {
+    return { saved: 0, collection: COLLECTION };
+  }
+
+  const db = await getLiveDb();
+  const collection = db.collection(COLLECTION);
+  const BATCH_SIZE = 400;
+  let saved = 0;
+
+  for (let i = 0; i < filings.length; i += BATCH_SIZE) {
+    const batch = db.batch();
+    const chunk = filings.slice(i, i + BATCH_SIZE);
+    for (const filing of chunk) {
+      batch.set(collection.doc(filing.id), filing, { merge: true });
     }
     await batch.commit();
     saved += chunk.length;

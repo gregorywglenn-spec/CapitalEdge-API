@@ -56,6 +56,7 @@ import {
   saveOfacSdn,
   saveOtcMarketWeekly,
   savePrivatePlacements,
+  saveProxyFilings,
   saveRegistrationStatements,
   saveRollCallVotes,
   saveTenderOffers,
@@ -74,6 +75,7 @@ import {
 } from "../../src/scrapers/bioguide.js";
 import { scrape13FLiveFeed } from "../../src/scrapers/13f.js";
 import { scrape8kLiveFeed } from "../../src/scrapers/form8k.js";
+import { scrapeProxyLiveFeed } from "../../src/scrapers/proxy.js";
 import { scrapeForm144LiveFeed } from "../../src/scrapers/form144.js";
 import { scrapeForm3LiveFeed } from "../../src/scrapers/form3.js";
 import { scrapeForm4LiveFeed } from "../../src/scrapers/form4.js";
@@ -132,6 +134,36 @@ export const scrape8kHourly = onSchedule(
       docsWritten = r.saved;
     }
     await writeJobMeta("materialEventsSync", { started, docsWritten });
+  },
+);
+
+/**
+ * DEF 14A Proxy filings. Annual + merger-vote proxies.
+ * Fires daily at 7:15 AM ET. 2-day lookback. Volume varies seasonally
+ * (heavy in Q1-Q2 during annual-meeting season); idempotent saves on
+ * accession handle the overlap.
+ */
+export const scrapeProxyDaily = onSchedule(
+  {
+    schedule: "15 7 * * *",
+    region: REGION,
+    timeZone: TZ,
+    memory: "512MiB",
+    timeoutSeconds: 540,
+    retryCount: 0,
+  },
+  async () => {
+    const started = Date.now();
+    logger.info("[proxy-daily] starting (2-day lookback)");
+    const filings = await scrapeProxyLiveFeed(2);
+    logger.info(`[proxy-daily] scraper returned ${filings.length} filings`);
+    let docsWritten = 0;
+    if (filings.length > 0) {
+      const r = await saveProxyFilings(filings);
+      logger.info(`[proxy-daily] saved ${r.saved} filings to ${r.collection}`);
+      docsWritten = r.saved;
+    }
+    await writeJobMeta("proxyFilingsSync", { started, docsWritten });
   },
 );
 
@@ -1012,7 +1044,7 @@ export const scheduledHealthCheck = onSchedule(
 // ─── MCP HTTP server (remote-reachable tool API) ──────────────────────────
 
 const SERVER_NAME = "keyvex";
-const SERVER_VERSION = "0.28.0";
+const SERVER_VERSION = "0.29.0";
 
 /**
  * The bearer token clients send in `Authorization: Bearer <key>` headers.

@@ -1940,6 +1940,54 @@ export interface FecCommitteeQuery {
   limit?: number;
 }
 
+// ─── DEF 14A Proxy filings (v1A: metadata-only) ────────────────────────────
+
+/**
+ * One Schedule 14A proxy filing. Captures the SEC's "Definitive Proxy
+ * Statement" family — DEF 14A (annual proxy), DEFA14A (additional materials),
+ * DEFM14A (merger-related proxy), DEFR14A (revised). The proxy is the
+ * document a company sends shareholders ahead of an annual meeting,
+ * carrying executive compensation tables, board nominations, shareholder
+ * proposals, auditor info, and voting matters.
+ *
+ * v1A scope is metadata-only — same posture as 8-K v1A. The full proxy
+ * body is 50-200 pages of HTML tables; extracting it (named exec officers,
+ * comp totals, vote outcomes, shareholder proposals) is v1.1 territory.
+ *
+ * Agents follow primary_document_url for the body. Filing type, merger
+ * flag, amendment flag, period-of-report are all surfaced in metadata.
+ */
+export interface ProxyFiling {
+  id: string;
+  ticker: string;
+  company_name: string | null;
+  company_cik: string;
+  accession_number: string;
+  filing_type: "DEF 14A" | "DEFA14A" | "DEFM14A" | "DEFR14A";
+  filing_date: string;
+  period_of_report: string;
+  is_merger_related: boolean;
+  is_amendment: boolean;
+  is_additional_materials: boolean;
+  primary_document_url: string;
+  sec_filing_url: string;
+  data_source: "SEC_EDGAR_DEF14A";
+  scraped_at: string;
+}
+
+export interface ProxyFilingsQuery {
+  ticker?: string;
+  company_cik?: string;
+  filing_type?: "DEF 14A" | "DEFA14A" | "DEFM14A" | "DEFR14A";
+  is_merger_related?: boolean;
+  is_amendment?: boolean;
+  since?: string;
+  until?: string;
+  sort_by?: "filing_date" | "period_of_report";
+  sort_order?: "desc" | "asc";
+  limit?: number;
+}
+
 // ─── Unified search ────────────────────────────────────────────────────────
 
 /**
