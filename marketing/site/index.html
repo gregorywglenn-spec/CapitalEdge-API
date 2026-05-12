@@ -173,6 +173,23 @@
     .audience-cols ul { padding-left: 20px; margin: 0 0 0; color: var(--muted); }
     .audience-cols ul li { margin-bottom: 8px; }
 
+    /* Demo image (animated SVG of unified_search in action) */
+    .demo-img {
+      display: block;
+      max-width: 100%;
+      height: auto;
+      margin: 24px 0 18px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+    }
+    .demo-caption {
+      font-size: 13px;
+      color: var(--muted);
+      text-align: center;
+      margin: 0 0 28px;
+    }
+
     /* Infra / feature cards (3-up) */
     .features {
       display: grid;
@@ -325,11 +342,14 @@
 
     <!-- Section 2 — Cross-source play -->
     <section id="demo">
-      <h2>One conversation. Six sources. Zero stitching.</h2>
+      <h2>One tool call. Every source that matters.</h2>
+      <img class="demo-img" src="demo.svg" alt="Animated demo of an AI agent calling KeyVex's unified_search tool to query 10 collections for Lockheed Martin (LMT) in a single round trip. Returns 14 records across 7 sources in 169ms." width="880" height="520" />
+      <p class="demo-caption">Live demo · <code>unified_search(ticker:"LMT")</code> fanning out across the disclosure surface in one round trip.</p>
       <p class="lead">
         Most financial-data APIs give you one narrow view. KeyVex's tools are
-        designed to chain. Here's a real query an agent can run in a single
-        conversation:
+        designed to chain — and the <code>unified_search</code> tool shown above
+        does the chaining for you. When you want to drive the chain manually, the
+        same composition is just as natural:
       </p>
       <pre><code>Agent: get_congressional_trades(ticker:"LMT", since:"2026-01-01")
 → returns 23 trades by senators and reps in Lockheed Martin stock

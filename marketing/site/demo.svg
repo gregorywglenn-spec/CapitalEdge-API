@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 520" width="880" height="520" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace">
+  <title>KeyVex demo — unified_search(ticker:&quot;LMT&quot;) cross-source fan-out</title>
+  <desc>Animated demo of an AI agent calling KeyVex's unified_search tool to query 10 collections for Lockheed Martin (LMT) in a single round trip. Returns 14 records across 7 sources in 169ms.</desc>
+
+  <!-- Terminal chrome -->
+  <rect x="0" y="0" width="880" height="520" rx="10" fill="#0d1117"/>
+  <rect x="0" y="0" width="880" height="36" rx="10" fill="#161b22"/>
+  <rect x="0" y="26" width="880" height="10" fill="#161b22"/>
+  <circle cx="20" cy="18" r="6" fill="#ff5f56"/>
+  <circle cx="40" cy="18" r="6" fill="#ffbd2e"/>
+  <circle cx="60" cy="18" r="6" fill="#27c93f"/>
+  <text x="440" y="22" text-anchor="middle" fill="#8b949e" font-size="12">mcp.keyvex.com — agent session</text>
+
+  <!-- Body content. Each line is its own group with a fade-in keyframe animation
+       running on a 24s loop. keyTimes shape: [reset 0, hold 0.02, fade-in start,
+       fade-in end, hold visible, fade-out start, fade-out end] -->
+
+  <!-- Static prompt -->
+  <text x="24" y="78" fill="#4dff20" font-size="14" font-weight="700">$ </text>
+  <text x="40" y="78" fill="#e6edf3" font-size="14">agent</text>
+
+  <!-- Cursor: blinks, then disappears once query starts typing -->
+  <rect x="78" y="66" width="9" height="16" fill="#4dff20">
+    <animate attributeName="opacity" values="1;0;1;0;1;0;0;0" keyTimes="0;0.02;0.04;0.06;0.08;0.10;0.15;1" dur="24s" repeatCount="indefinite"/>
+  </rect>
+
+  <!-- User question (appears at 1.5s, ~6%) -->
+  <g>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.06;0.10;0.92;0.98;1" dur="24s" repeatCount="indefinite"/>
+    <text x="24" y="108" fill="#8b949e" font-size="14">&gt; </text>
+    <text x="40" y="108" fill="#e6edf3" font-size="14">Tell me about Lockheed Martin (LMT) — insider activity,</text>
+    <text x="40" y="128" fill="#e6edf3" font-size="14">congressional trades, M&amp;A events, anything material in</text>
+    <text x="40" y="148" fill="#e6edf3" font-size="14">the public record.</text>
+  </g>
+
+  <!-- Tool call line (appears at ~4s, ~17%) -->
+  <g>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.16;0.20;0.92;0.98;1" dur="24s" repeatCount="indefinite"/>
+    <text x="24" y="186" fill="#8b949e" font-size="13">[tool call]</text>
+    <text x="110" y="186" fill="#4dff20" font-size="13" font-weight="700">unified_search</text>
+    <text x="220" y="186" fill="#e6edf3" font-size="13">(ticker:</text>
+    <text x="278" y="186" fill="#a5d6ff" font-size="13">"LMT"</text>
+    <text x="316" y="186" fill="#e6edf3" font-size="13">, per_source_limit: </text>
+    <text x="450" y="186" fill="#ffa657" font-size="13">3</text>
+    <text x="460" y="186" fill="#e6edf3" font-size="13">)</text>
+  </g>
+
+  <!-- Fan-out status (appears at ~5.5s) -->
+  <g>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.22;0.26;0.92;0.98;1" dur="24s" repeatCount="indefinite"/>
+    <text x="24" y="210" fill="#8b949e" font-size="13">[fan-out]  10 collections in parallel...</text>
+  </g>
+
+  <!-- Results lines — each fades in 0.8s after the previous. Stagger across 8s. -->
+  <!-- Start at 7s (29%) → 7.8 → 8.6 → 9.4 → 10.2 → 11.0 → 11.8 → 12.6 → 13.4 → 14.2 -->
+
+  <g>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.29;0.32;0.92;0.98;1" dur="24s" repeatCount="indefinite"/>
+    <text x="24" y="244" fill="#4dff20" font-size="13" font-weight="700">  ✓</text>
+    <text x="48" y="244" fill="#e6edf3" font-size="13">insider_trades</text>
+    <text x="320" y="244" fill="#8b949e" font-size="13">3 records · disclosure dates 04-12 → 04-30</text>
+  </g>
+
+  <g>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.32;0.35;0.92;0.98;1" dur="24s" repeatCount="indefinite"/>
+    <text x="24" y="266" fill="#4dff20" font-size="13" font-weight="700">  ✓</text>
+    <text x="48" y="266" fill="#e6edf3" font-size="13">congressional_trades</text>
+    <text x="320" y="266" fill="#8b949e" font-size="13">3 records · Boozman, Whitehouse, Mullin</text>
+  </g>
+
+  <g>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.35;0.38;0.92;0.98;1" dur="24s" repeatCount="indefinite"/>
+    <text x="24" y="288" fill="#4dff20" font-size="13" font-weight="700">  ✓</text>
+    <text x="48" y="288" fill="#e6edf3" font-size="13">planned_insider_sales</text>
+    <text x="320" y="288" fill="#8b949e" font-size="13">3 records · $35M+ scheduled Q1 '26</text>
+  </g>
+
+  <g>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.38;0.41;0.92;0.98;1" dur="24s" repeatCount="indefinite"/>
+    <text x="24" y="310" fill="#4dff20" font-size="13" font-weight="700">  ✓</text>
+    <text x="48" y="310" fill="#e6edf3" font-size="13">initial_ownership_baselines</text>
+    <text x="320" y="310" fill="#8b949e" font-size="13">3 records · Form 3 anchors</text>
+  </g>
+
+  <g>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.41;0.44;0.92;0.98;1" dur="24s" repeatCount="indefinite"/>
+    <text x="24" y="332" fill="#4dff20" font-size="13" font-weight="700">  ✓</text>
+    <text x="48" y="332" fill="#e6edf3" font-size="13">activist_ownership</text>
+    <text x="320" y="332" fill="#8b949e" font-size="13">3 records · BlackRock, Vanguard, State Street</text>
+  </g>
+
+  <g>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.44;0.47;0.92;0.98;1" dur="24s" repeatCount="indefinite"/>
+    <text x="24" y="354" fill="#4dff20" font-size="13" font-weight="700">  ✓</text>
+    <text x="48" y="354" fill="#e6edf3" font-size="13">material_events</text>
+    <text x="320" y="354" fill="#8b949e" font-size="13">3 records · 8-K items 1.01, 2.01, 5.02</text>
+  </g>
+
+  <g>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.47;0.50;0.92;0.98;1" dur="24s" repeatCount="indefinite"/>
+    <text x="24" y="376" fill="#4dff20" font-size="13" font-weight="700">  ✓</text>
+    <text x="48" y="376" fill="#e6edf3" font-size="13">otc_market_weekly</text>
+    <text x="320" y="376" fill="#8b949e" font-size="13">3 records · ATS volume week of 05-04</text>
+  </g>
+
+  <g>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.50;0.53;0.92;0.98;1" dur="24s" repeatCount="indefinite"/>
+    <text x="24" y="398" fill="#8b949e" font-size="13" font-weight="700">  ·</text>
+    <text x="48" y="398" fill="#8b949e" font-size="13">institutional_holdings</text>
+    <text x="320" y="398" fill="#8b949e" font-size="13">0 records (LMT not in current 13F window)</text>
+  </g>
+
+  <g>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.53;0.56;0.92;0.98;1" dur="24s" repeatCount="indefinite"/>
+    <text x="24" y="420" fill="#8b949e" font-size="13" font-weight="700">  ·</text>
+    <text x="48" y="420" fill="#8b949e" font-size="13">tender_offers</text>
+    <text x="320" y="420" fill="#8b949e" font-size="13">0 records</text>
+  </g>
+
+  <g>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.56;0.59;0.92;0.98;1" dur="24s" repeatCount="indefinite"/>
+    <text x="24" y="442" fill="#8b949e" font-size="13" font-weight="700">  ·</text>
+    <text x="48" y="442" fill="#8b949e" font-size="13">registration_statements</text>
+    <text x="320" y="442" fill="#8b949e" font-size="13">0 records</text>
+  </g>
+
+  <!-- Final summary — appears at ~16s -->
+  <g>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.65;0.68;0.92;0.98;1" dur="24s" repeatCount="indefinite"/>
+    <line x1="24" y1="468" x2="856" y2="468" stroke="#21262d" stroke-width="1"/>
+    <text x="24" y="492" fill="#4dff20" font-size="14" font-weight="700">  14 records</text>
+    <text x="138" y="492" fill="#e6edf3" font-size="14">across 7 sources</text>
+    <text x="280" y="492" fill="#8b949e" font-size="14">·  single round trip  ·  </text>
+    <text x="490" y="492" fill="#4dff20" font-size="14" font-weight="700">169ms</text>
+  </g>
+
+</svg>

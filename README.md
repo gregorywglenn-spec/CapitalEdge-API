@@ -4,13 +4,15 @@ The Model Context Protocol (MCP) server for **US public financial disclosures**.
 
 Congressional trades, executive insider transactions, institutional holdings, activist stakes, federal contracts, lobbying spend, material events, member profiles, FEC campaign finance, congressional bills, roll-call votes, OFAC sanctions, Federal Register rules, tender offers, private placements, mutual fund holdings, SEC enforcement, OTC dark-pool volume — every tool callable from Claude, Cursor, or any MCP-compatible agent through one Bearer-authenticated endpoint. Designed for AI agents from the ground up: fewer tools, smarter parameters, descriptions that help the agent decide *when* to use each one — not yet another REST API with MCP bolted on top.
 
+![KeyVex unified_search demo — one tool call, ten collections, sub-second cross-source query](https://raw.githubusercontent.com/gregorywglenn-spec/Keyvex-API/main/marketing/site/demo.svg)
+
 ---
 
 ## Why KeyVex
 
-Every other financial-data MCP today wraps a pre-existing REST API and ends up with 100–250 tools that overflow agent context windows. KeyVex starts from the agent: 21 entity-based tools, rich filter parameters, no separate `get_X` and `get_X_by_ticker` and `get_recent_X` variants.
+Every other financial-data MCP today wraps a pre-existing REST API and ends up with 100–250 tools that overflow agent context windows. KeyVex starts from the agent: 22 entity-based tools, rich filter parameters, no separate `get_X` and `get_X_by_ticker` and `get_recent_X` variants. The 22nd tool, `unified_search`, fans out across the entire disclosure surface in one call — the demo above is real.
 
-**The wedge — one conversation, six sources, zero stitching:**
+**The wedge — one conversation, every source that matters:**
 
 ```
 Agent: get_congressional_trades(ticker:"LMT", since:"2026-01-01")
@@ -32,7 +34,7 @@ Agent: get_fec_candidate_profile(candidate_name:"<member name>", state:"<state>"
 → that member's FEC candidate ID + principal campaign committee
 ```
 
-Six separate disclosure sources joined by `ticker` + `bioguide_id` + `recipient_name` + name. Triangulation that takes a Bloomberg terminal and an analyst, in a single AI agent and a few seconds. No other MCP server combines these.
+Six separate disclosure sources joined by `ticker` + `bioguide_id` + `recipient_name` + name. Or `unified_search(ticker:"LMT")` does the same fan-out in one call. Triangulation that takes a Bloomberg terminal and an analyst, in a single AI agent and a few seconds. No other MCP server combines these.
 
 ---
 
