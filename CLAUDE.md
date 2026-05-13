@@ -706,9 +706,10 @@ Built + shipped in commit `1335a95`:
 
 **Last Updated**
 
-May 12, 2026 — Day 9 LATE EVENING. **27 MCP tools live, server v0.36.0**, 27+ autonomous scrapers running on cron, MCP endpoint at `https://mcp.keyvex.com`, landing page at `https://keyvex.com` (apex + www both mapped, auto-TLS), `contact@keyvex.com` is the canonical inbox. Privacy Policy live at `keyvex.com/privacy`. Animated SVG demo of `unified_search` showcased on both landing and README. Posture / audience copy hardened to enterprise-readable. Derek's dashboard project active again, porting KeyVex scrapers into his side. ~2 weeks to launch per Greg.
+May 12, 2026 — Day 9 LATE NIGHT. **28 MCP tools live, server v0.39.0**, 29+ autonomous scrapers running on cron, MCP endpoint at `https://mcp.keyvex.com`, landing page at `https://keyvex.com` (apex + www both mapped, auto-TLS). XBRL Fundamentals (28th MCP tool, 323K records across 130 S&P-100-anchored tickers) + FRED macro data (15K observations across 30 curated series — rates, GDP, PCE, money supply, Fed balance sheet) shipped this evening. Killer-query pull-quote front-and-center on the landing hero. KEYVEX wordmark logo wired into topbar + favicon + OG image. Derek's dashboard project active again. ~2 weeks to launch per Greg.
 
 **Earlier "Last Updated" snapshots (kept for history):**
+- May 12, 2026 — Day 9 LATE EVENING. 27 MCP tools, server v0.36.0 (pre-XBRL marathon checkpoint).
 - May 12, 2026 — Day 9 EVENING. 24 MCP tools, server v0.30.0 (mid-Day-9 checkpoint before the 6-scraper marathon).
 - May 11, 2026 — Day 8 EVENING. 21 MCP tools, server v0.27.0, 22+ autonomous scrapers, three live custom domains, battle-test green (59 queries, 0 errors).
 - May 7, 2026 — Day 7 LATER. 10 MCP tools, server v0.17.0, KeyVex rebrand complete, landing page shipped, `mcp.keyvex.com` LIVE with auto-managed TLS, GitHub repo renamed to `Keyvex-API`, multi-site Firebase Hosting set up, service-key REST CLI built, Form 278 v1A scraper + MCP tool shipped (10th tool).
@@ -962,3 +963,87 @@ get_treasury_auctions(security_type:"Note")              → rate environment
 11 tools, one conversation, every signal that matters about a major US bank. **No other MCP server combines these.**
 
 **For Future Claude starting fresh on Day 10:** the open queue is XBRL Fundamentals (the big one), v1.1 unified_search company-name fuzzy, and any of the deferred sources (each in its own session). Don't try to add scrapers in a hurry — the marathon today already shipped 6 + 3-source-additions in one go. Per session: pick ONE substantial piece and ship it cleanly. The 27-tool surface is launch-ready.
+
+### 🌃 Day 9 LATE NIGHT addendum (2026-05-12 → continuation past the closeout)
+
+After the Day 9 LATE EVENING closeout snapshot (which captured the v0.36.0 state — 27 tools, six-scraper marathon done), Greg authorized the XBRL big-bang and we kept going. Three more major versions shipped, the single largest data ingestion in KeyVex's history, and the marketing surface upgraded to match.
+
+**Final live state at TRUE session close:**
+- **28 MCP tools** at `mcp.keyvex.com` v0.39.0
+- **323,590 XBRL fundamental records** across 130 S&P-100-anchored tickers (income statement / balance sheet / cash flow / per-share / entity)
+- **15,158 FRED macro observations** across 30 series (rates / GDP / inflation / money / debt / trade / sentiment), unified with the existing 19-series BLS catalog under a single tool
+- **Killer-query pull-quote** on the landing hero ("Which members of Congress traded the company that just won the DoD contract — while they were under SEC investigation, after lobbying spending spiked, and insiders sold ahead of weak earnings?")
+- **KEYVEX wordmark logo** wired into topbar + favicon + OG image
+- **12-tool LMT walkthrough** on landing (was 6) showing the multi-product replacement story explicitly
+- **Branch + main both at the v0.39.0 wrap commit**
+
+**What shipped after the Day 9 LATE EVENING addendum (in order):**
+
+| # | Commit | What |
+|---|---|---|
+| 20 | `d86cc22` | **v0.37.0 — 28th MCP tool, `get_fundamentals` (XBRL)** — SEC EDGAR company-facts API. Curated 40-concept watchlist covering income statement / balance sheet / cash flow / per-share / entity. Smoke-test: 6,523 AAPL observations saved. Doc-ID `{cik}-{concept}-{period_end}-{form}` with form-slash sanitization. Cloud Function `scrapeXbrlWeekly` registered (Sundays 4 AM ET) |
+| 21 | `6827f63` | **v0.38.0 — XBRL universe + streaming saver + ticker fixes.** Curated 132-ticker universe (S&P-100 + cross-source-relevant additions in defense, banks, healthcare, energy, big tech, autos). Streaming saver `scrapeAndSaveXbrlStreaming` (saves per-company, bounded memory). Ticker normalization (BRK.B → BRKB via dot-stripping in getTickerInfo). Ticker override in scrapeXbrlByCik (avoids the JPM → JPM-PM reverse-lookup ambiguity — captured as Hard Lesson below). Universe dedup (removed GOOG since GOOGL covers the same CIK) |
+| 22 | `c810a47` | **Killer-query pull-quote on landing hero.** Brand-green left border, lead-in "THE QUERY NO OTHER MCP SERVER CAN ANSWER", four key phrases highlighted in accent green. Subhead bumped 22 → 28 tools |
+| 23 | `18d5100` | Copy fix: "lobbying spend" → "lobbying spending" (more polished phrasing) |
+| 24 | `73b2f34` | **KEYVEX wordmark logo wired** — replaces text wordmark in topbar, replaces inline-SVG favicon with PNG K-mark, adds og:image + twitter:image meta tags pointing to the wordmark for social card preview. Files: `keyvex-wordmark.png` (full) + `keyvex-mark.png` (K-only) |
+| — | (deletion + re-backfill mid-session) | Doc-ID collision found post-initial-backfill: 593K observations were collapsing into 273K docs (~46% collision). Root cause: `cik+concept+period_end+form` didn't distinguish YTD-cumulative from per-quarter observations (e.g., AAPL FY2017 Revenues $229B vs Q4 standalone $52B both had period_end=2017-09-30 + form=10-K). Fix: include `period_start` in doc ID. Deleted 239K orphans + re-ran full backfill. Post-fix: **323,590 distinct docs preserved, ZERO suspicious ticker patterns** (JPM stored as "JPM" not "JPM-PM" — override worked) |
+| 25 | `fa3bca6` | **v0.39.0 — FRED added to `get_economic_indicators`** (no new tool — extends source enum). 30-series curated watchlist: rates (Fed Funds, 2Y/10Y/30Y Treasury, 10Y-2Y spread, 30yr mortgage, AAA/BAA), GDP (nominal/real/growth-rate), activity (industrial production, housing starts, retail sales), inflation (PCE, Core PCE, 5Y/10Y breakevens), employment (UNRATE/PAYEMS — FRED republish of BLS, plus JOLTS, jobless claims), money (M2, Fed total assets, overnight reverse repo), debt (federal debt, Treasury general account), trade (trade balance, broad dollar index), sentiment (U Michigan). 15,158 observations saved. Period labels extended to weekly + daily cadences for high-frequency series. Provenance field renamed: `bls_source_url` → `source_url` for cross-source consistency. FRED_API_KEY provisioned to Firebase Secret Manager |
+| 26 | `97cc01a` | **v0.39.0 wrap** — README brought current (Tools table updated with all 7 new rows, footer count 22 → 28, enforcement row mentions all 5 regulators). Landing FAQ source list expanded to mention XBRL fundamentals, DEF 14A proxies, Treasury auctions, BLS + FRED, HHS-OIG, CFPB, all 5 enforcement regulators |
+| 27 | `7a62ac3` | **Landing demo walkthrough expanded 6 → 12 tools.** New chain shows the full multi-product replacement story: congressional trades + member profile + roll-call votes + federal contracts + fundamentals (XBRL) + lobbying + proxy filings + insider transactions + enforcement actions + economic indicators (FRED) + treasury auctions + FEC candidate profile. Summary line strengthened: "Triangulation that takes a Bloomberg terminal and an analyst — fundamentals from a separate provider — and a macro data subscription on top, all combined into a single AI agent conversation in a few seconds" |
+| 28 | this commit | CLAUDE.md sweep for the true Day 9 close |
+
+**Three new Hard Lessons saved tonight (XBRL-specific):**
+
+1. **SEC XBRL doc-ID needs `period_start` to distinguish YTD vs per-quarter.** A 10-K filing tags both the FY cumulative observation (start=Oct prior year, end=Sept) AND the Q4 standalone (start=Jul, end=Sept) under the SAME concept + period_end + form. Without `period_start` in the doc ID, one overwrites the other — and agents querying for "Revenues for FY2018" can get the wrong number depending on which observation happened to land last. Fix is one-line: `${cikPadded}-${concept}-${periodEnd}-${safeForm}-${periodStartPart}` where periodStartPart is the start date or "pit" sentinel for balance-sheet point-in-time concepts.
+
+2. **`cikToTicker` reverse lookup picks preferred-share tickers via last-write-wins.** SEC's `company_tickers.json` has multiple entries per CIK for companies with preferred-share series (JPM has JPM common + JPM-PA/PC/PD/PG/PM preferred; AGNC has AGNC + AGNCL/AGNCM/AGNCN/AGNCO; etc.). When the catalog is loaded into a `cikToTicker: Record<string, string>` map with last-write-wins, the LAST ticker (often a preferred series like JPM-PM) clobbers the common ticker (JPM). Records then get stored with ticker="JPM-PM" and agents querying `ticker: "JPM"` find nothing. **Fix**: callers of `scrapeXbrlByCik` should pass a `tickerOverride` parameter that preserves the INPUT ticker (which the caller knows is the common one). `scrapeXbrlByTicker` was updated to always pass-through the input. Don't bake heuristics into the cache — let the caller specify intent.
+
+3. **SEC company_tickers.json strips dots from class-share tickers.** BRK.B is stored as "BRKB". BF.B is "BFB". HEI.A is "HEIA". Naive ticker lookup with `tickerCache[ticker.toUpperCase()]` misses these. Fix: getTickerInfo tries direct lookup → strip dots → strip slashes, in that order. Affects ANY scraper that resolves SEC tickers — port this pattern to form4/form144/form3/13D-G/etc. if/when those skip on class-share names.
+
+**Strategic items confirmed Day 9 LATE NIGHT:**
+
+1. **The competitive frame is now FAANG-grade.** With XBRL Fundamentals shipped, KeyVex covers what FMP charges $22/mo for, what EODHD charges $60/mo for, AND adds 27 other public-disclosure surfaces neither of them has. The killer-query pitch combines six data sources (DoD contract + congressional trades + SEC enforcement + lobbying + insider trades + earnings/fundamentals) that no single competitor can answer in one round trip — captured as the hero pull-quote. Greg approved the FAANG-grade vs. FMP/EODHD/Bloomberg positioning.
+
+2. **Universe dedup discipline matters.** GOOG and GOOGL both resolve to Alphabet's CIK 1652044. When both are in the universe, the second one to scrape clobbers the first's records (same CIK → same doc IDs in the new schema). Universe was pruned to one ticker per CIK. Same pattern will hit any future multi-class-share company.
+
+3. **Bloomberg-replacement positioning is honest.** The 12-tool LMT walk replaces (a) Bloomberg terminal for cross-source disclosures + (b) FMP/EODHD for fundamentals + (c) FRED-direct for macro. That's ~$2K-$24K/yr of subscriptions for a $29-99/mo KeyVex price point. The landing's summary line makes this explicit now.
+
+**Cross-source play with 28 tools is now the full picture.** Real agent walk for any major company:
+
+```
+get_congressional_trades(ticker:"LMT")           → senators who traded LMT
+get_member_profile(bioguide_id:"…")              → party, state, committees
+get_roll_call_votes(legislation_type:"HR")       → defense-bill voting history
+get_federal_contracts(recipient_name:"Lockheed") → contracts LMT won
+get_fundamentals(ticker:"LMT", category:"income_statement")
+                                                  → LMT's revenue + income (XBRL)
+get_lobbying_filings(client_name:"Lockheed")     → influence spend
+get_proxy_filings(ticker:"LMT")                  → exec comp + board votes
+get_insider_transactions(ticker:"LMT")           → insider activity
+get_enforcement_actions(text:"Lockheed")         → 5-regulator actions
+get_economic_indicators(category:"rates", latest_only:true)
+                                                  → Fed Funds, 10Y, mortgage (FRED)
+get_treasury_auctions(security_type:"Note")      → bond-market demand context
+get_fec_candidate_profile(candidate_name:"…")    → trader's campaign committee
+```
+
+**12 tools, one conversation.** Plus `unified_search(ticker:"LMT")` collapses the ticker-driven subset (10-12 of those) into ONE fan-out call. No other MCP server, no other API combination, no other commercial product covers this.
+
+**Open queue rolling to Day 10+:**
+
+1. **Pre-launch commercial work (gated only on time)** — MCP registry submissions (Anthropic + Smithery + Awesome-MCP + PulseMCP) all prereqs met. Privacy policy live. Launch posts (Twitter / Show HN / Reddit) drafts.
+2. **v1.1 unified_search company-name fuzzy** (~1-2 sessions). Lets CFPB / lobbying / enforcement_actions join the fan-out by issuer name rather than ticker. The unlock for "tell me everything about Wells Fargo" hitting 27 tools instead of ~14.
+3. **Deferred scrapers** (each its own session): GAO (WAF 403), NLRB (HTML scrape complexity), FERC (energy-niche), EPA ECHO (broken date filters), OSHA (DOL bulk CSV), NHTSA (auth-gated).
+4. **FEC Schedule A** (individual contributions) — strongest TIER-1 quick-win after launch. Closes the "donation → vote → trade" political-alpha loop. Free API, ~1-1.5 hr build.
+5. **FARA** (foreign agent registrations) — pairs with LDA lobbying. Real risk-signal value (foreign influence).
+6. **FTC enforcement** — extends `get_enforcement_actions` to a 6th source. Trivial add since the pattern is proven.
+7. **Senate roll-call votes** — completes the bicameral picture (we have House; Senate XML is at senate.gov, different endpoint).
+8. **Node 20 → 22 upgrade** before 2026-10-30 decommission (~5.5 months out).
+
+**For Future Claude starting fresh on Day 10:** The 28-tool surface plus the XBRL + FRED data ingestion is launch-ready. The killer-query landing is the marketing centerpiece. Don't add more scrapers immediately — registry submissions + launch prep is the next push. If a scraper is added, FEC Schedule A is the single biggest unlock left because it closes the political-alpha loop (donations → trades → votes). All other deferred sources need dedicated investigation sessions.
+
+**Memory rules active for next session (12 total, unchanged from Day 9):**
+- All 11 from Day 8 still apply
+- Day 9: `feedback_raw_input_clean_output.md`
+
+The three new XBRL-specific Hard Lessons above are captured in this CLAUDE.md and don't need to become separate memory entries — they're project-specific schema/API quirks, not behavioral rules.
