@@ -81,6 +81,8 @@ import {
   saveFecCommittees,
   saveFecContributions,
   saveFecIndependentExpenditures,
+  saveCftcCotReports,
+  saveSecFailsToDeliver,
   saveFederalContractAwards,
   saveFederalGrants,
   saveForm144Filings,
@@ -160,6 +162,8 @@ import {
 } from "./scrapers/fec.js";
 import { scrapeFecScheduleA } from "./scrapers/fec-schedule-a.js";
 import { scrapeFecScheduleE } from "./scrapers/fec-schedule-e.js";
+import { scrapeCftcCot } from "./scrapers/cftc-cot.js";
+import { scrapeSecFailsToDeliver } from "./scrapers/sec-ftd.js";
 import {
   scrapeTenderOffersByTicker,
   scrapeTenderOffersLiveFeed,
@@ -1151,6 +1155,59 @@ const COMMANDS: Record<string, CliCommand> = {
         );
       }
       return ies;
+    },
+  },
+  "cftc-cot": {
+    description:
+      "Scrape CFTC Commitments of Traders (COT) reports. Weekly futures + options-on-futures positioning by trader class. Optional: --weeks=N (default 12), --contract=CODE (e.g., 13874A for E-mini S&P), --commodity='SUBSTRING'. Add --save to write to cftc_cot_reports.",
+    run: async (args) => {
+      const flag = (name: string): string | undefined => {
+        const found = args.find((a) => a.startsWith(`--${name}=`));
+        return found ? found.slice(name.length + 3) : undefined;
+      };
+      const weeks = flag("weeks") ? parseInt(flag("weeks") as string, 10) : undefined;
+      const contractCode = flag("contract");
+      const commodityName = flag("commodity");
+      const reports = await scrapeCftcCot({
+        ...(weeks !== undefined && { lookbackWeeks: weeks }),
+        ...(contractCode !== undefined && { contractCode }),
+        ...(commodityName !== undefined && { commodityName }),
+      });
+      if (hasSaveFlag(args)) {
+        console.error(
+          `[save] Writing ${reports.length} CFTC COT reports to Firestore...`,
+        );
+        const result = await saveCftcCotReports(reports);
+        console.error(`[save] Saved ${result.saved} reports to ${result.collection}`);
+      }
+      return reports;
+    },
+  },
+  "sec-ftd": {
+    description:
+      "Scrape SEC Fails-to-Deliver bi-monthly zip. Defaults to most recent published half-month. Optional: --year=YYYY --month=N --half=a|b. Add --save to write to sec_fails_to_deliver.",
+    run: async (args) => {
+      const flag = (name: string): string | undefined => {
+        const found = args.find((a) => a.startsWith(`--${name}=`));
+        return found ? found.slice(name.length + 3) : undefined;
+      };
+      const year = flag("year") ? parseInt(flag("year") as string, 10) : undefined;
+      const month = flag("month") ? parseInt(flag("month") as string, 10) : undefined;
+      const halfStr = flag("half");
+      const half = halfStr === "a" || halfStr === "b" ? halfStr : undefined;
+      const rows = await scrapeSecFailsToDeliver({
+        ...(year !== undefined && { year }),
+        ...(month !== undefined && { month }),
+        ...(half !== undefined && { half }),
+      });
+      if (hasSaveFlag(args)) {
+        console.error(
+          `[save] Writing ${rows.length} SEC FTD rows to Firestore...`,
+        );
+        const result = await saveSecFailsToDeliver(rows);
+        console.error(`[save] Saved ${result.saved} rows to ${result.collection}`);
+      }
+      return rows;
     },
   },
   "federal-register": {

@@ -38,6 +38,10 @@ import type {
   FederalContractAwardsQuery,
   FederalGrant,
   FederalGrantsQuery,
+  CftcCotReport,
+  CftcCotReportQuery,
+  SecFailToDeliver,
+  SecFailsToDeliverQuery,
   FederalRegisterDocument,
   FederalRegisterDocumentsQuery,
   Form144Filing,
@@ -1002,6 +1006,232 @@ export async function saveFederalGrants(
     const chunk = grants.slice(i, i + BATCH_SIZE);
     for (const g of chunk) {
       batch.set(collection.doc(g.id), g, { merge: true });
+    }
+    await batch.commit();
+    saved += chunk.length;
+  }
+  return { saved, collection: COLLECTION };
+}
+
+// ─── CFTC COT reports query + save ────────────────────────────────────────
+
+export async function queryCftcCotReports(
+  query: CftcCotReportQuery,
+): Promise<QueryResult<CftcCotReport>> {
+  if (isStubMode()) {
+    return { results: [], has_more: false };
+  }
+  const db = await getLiveDb();
+  let q: FirestoreQuery = db.collection("cftc_cot_reports");
+
+  if (query.id) {
+    const docSnap = await db
+      .collection("cftc_cot_reports")
+      .doc(query.id)
+      .get();
+    if (!docSnap.exists) return { results: [], has_more: false };
+    return { results: [docSnap.data() as CftcCotReport], has_more: false };
+  }
+
+  if (query.cftc_contract_market_code) {
+    q = q.where(
+      "cftc_contract_market_code",
+      "==",
+      query.cftc_contract_market_code,
+    );
+  } else if (query.commodity_name) {
+    q = q.where("commodity_name", "==", query.commodity_name);
+  }
+
+  const sortField = query.sort_by ?? "report_date";
+  const sortOrder = query.sort_order ?? "desc";
+
+  const userLimit = query.limit ?? 50;
+  const needsSubstring = !!query.contract_market_name;
+  const fetchLimit = needsSubstring ? 5000 : Math.max(userLimit * 4, 500);
+
+  try {
+    q = q.orderBy(sortField, sortOrder).limit(fetchLimit);
+  } catch {
+    q = q.limit(fetchLimit);
+  }
+
+  const snap = await q.get();
+  let docs = snap.docs.map((d) => d.data() as CftcCotReport);
+
+  if (query.contract_market_name) {
+    const needle = query.contract_market_name.toLowerCase();
+    docs = docs.filter((c) =>
+      (c.contract_market_name ?? "").toLowerCase().includes(needle),
+    );
+  }
+  if (query.since) {
+    docs = docs.filter((c) => (c.report_date ?? "") >= (query.since ?? ""));
+  }
+  if (query.until) {
+    docs = docs.filter(
+      (c) => (c.report_date ?? "") <= (query.until ?? "9999"),
+    );
+  }
+
+  if (query.latest_only) {
+    const seen = new Map<string, CftcCotReport>();
+    for (const d of docs) {
+      const existing = seen.get(d.cftc_contract_market_code);
+      if (!existing || existing.report_date < d.report_date) {
+        seen.set(d.cftc_contract_market_code, d);
+      }
+    }
+    docs = Array.from(seen.values());
+  }
+
+  docs.sort((a, b) => {
+    const av = (a as unknown as Record<string, number | string | undefined>)[
+      sortField
+    ] ?? "";
+    const bv = (b as unknown as Record<string, number | string | undefined>)[
+      sortField
+    ] ?? "";
+    if (av === bv) return 0;
+    const cmp = av < bv ? -1 : 1;
+    return sortOrder === "desc" ? -cmp : cmp;
+  });
+
+  const has_more = docs.length > userLimit;
+  const results = docs.slice(0, userLimit);
+  return { results, has_more };
+}
+
+export async function saveCftcCotReports(
+  reports: CftcCotReport[],
+): Promise<{ saved: number; collection: string }> {
+  if (isStubMode()) {
+    throw new Error(
+      "Cannot save to Firestore in stub mode (no service account at secrets/service-account.json)",
+    );
+  }
+  const COLLECTION = "cftc_cot_reports";
+  if (reports.length === 0) return { saved: 0, collection: COLLECTION };
+
+  const db = await getLiveDb();
+  const collection = db.collection(COLLECTION);
+  const BATCH_SIZE = 400;
+  let saved = 0;
+  for (let i = 0; i < reports.length; i += BATCH_SIZE) {
+    const batch = db.batch();
+    const chunk = reports.slice(i, i + BATCH_SIZE);
+    for (const r of chunk) {
+      batch.set(collection.doc(r.id), r, { merge: true });
+    }
+    await batch.commit();
+    saved += chunk.length;
+  }
+  return { saved, collection: COLLECTION };
+}
+
+// ─── SEC FTD (Fails-to-Deliver) query + save ──────────────────────────────
+
+export async function querySecFailsToDeliver(
+  query: SecFailsToDeliverQuery,
+): Promise<QueryResult<SecFailToDeliver>> {
+  if (isStubMode()) {
+    return { results: [], has_more: false };
+  }
+  const db = await getLiveDb();
+  let q: FirestoreQuery = db.collection("sec_fails_to_deliver");
+
+  if (query.id) {
+    const docSnap = await db
+      .collection("sec_fails_to_deliver")
+      .doc(query.id)
+      .get();
+    if (!docSnap.exists) return { results: [], has_more: false };
+    return { results: [docSnap.data() as SecFailToDeliver], has_more: false };
+  }
+
+  if (query.ticker) {
+    q = q.where("ticker", "==", query.ticker.toUpperCase());
+  } else if (query.cusip) {
+    q = q.where("cusip", "==", query.cusip);
+  }
+
+  const sortField = query.sort_by ?? "settlement_date";
+  const sortOrder = query.sort_order ?? "desc";
+
+  const userLimit = query.limit ?? 50;
+  const fetchLimit = Math.max(userLimit * 4, 500);
+
+  try {
+    q = q.orderBy(sortField, sortOrder).limit(fetchLimit);
+  } catch {
+    q = q.limit(fetchLimit);
+  }
+
+  const snap = await q.get();
+  let docs = snap.docs.map((d) => d.data() as SecFailToDeliver);
+
+  if (query.since) {
+    docs = docs.filter(
+      (f) => (f.settlement_date ?? "") >= (query.since ?? ""),
+    );
+  }
+  if (query.until) {
+    docs = docs.filter(
+      (f) => (f.settlement_date ?? "") <= (query.until ?? "9999"),
+    );
+  }
+  if (query.min_quantity !== undefined) {
+    docs = docs.filter(
+      (f) => f.quantity_fails >= (query.min_quantity ?? 0),
+    );
+  }
+  if (query.min_value !== undefined) {
+    docs = docs.filter((f) => f.fail_value >= (query.min_value ?? 0));
+  }
+
+  docs.sort((a, b) => {
+    const av =
+      sortField === "settlement_date"
+        ? a.settlement_date
+        : sortField === "quantity_fails"
+        ? a.quantity_fails
+        : a.fail_value;
+    const bv =
+      sortField === "settlement_date"
+        ? b.settlement_date
+        : sortField === "quantity_fails"
+        ? b.quantity_fails
+        : b.fail_value;
+    if (av === bv) return 0;
+    const cmp = av < bv ? -1 : 1;
+    return sortOrder === "desc" ? -cmp : cmp;
+  });
+
+  const has_more = docs.length > userLimit;
+  const results = docs.slice(0, userLimit);
+  return { results, has_more };
+}
+
+export async function saveSecFailsToDeliver(
+  rows: SecFailToDeliver[],
+): Promise<{ saved: number; collection: string }> {
+  if (isStubMode()) {
+    throw new Error(
+      "Cannot save to Firestore in stub mode (no service account at secrets/service-account.json)",
+    );
+  }
+  const COLLECTION = "sec_fails_to_deliver";
+  if (rows.length === 0) return { saved: 0, collection: COLLECTION };
+
+  const db = await getLiveDb();
+  const collection = db.collection(COLLECTION);
+  const BATCH_SIZE = 400;
+  let saved = 0;
+  for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+    const batch = db.batch();
+    const chunk = rows.slice(i, i + BATCH_SIZE);
+    for (const r of chunk) {
+      batch.set(collection.doc(r.id), r, { merge: true });
     }
     await batch.commit();
     saved += chunk.length;

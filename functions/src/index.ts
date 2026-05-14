@@ -42,6 +42,8 @@ import {
   saveFecCommittees,
   saveFecContributions,
   saveFecIndependentExpenditures,
+  saveCftcCotReports,
+  saveSecFailsToDeliver,
   saveFederalContractAwards,
   saveFederalGrants,
   saveForm144Filings,
@@ -106,6 +108,8 @@ import {
 } from "../../src/scrapers/fec.js";
 import { scrapeFecScheduleA } from "../../src/scrapers/fec-schedule-a.js";
 import { scrapeFecScheduleE } from "../../src/scrapers/fec-schedule-e.js";
+import { scrapeCftcCot } from "../../src/scrapers/cftc-cot.js";
+import { scrapeSecFailsToDeliver } from "../../src/scrapers/sec-ftd.js";
 import { scrapeTenderOffersLiveFeed } from "../../src/scrapers/tender-offers.js";
 import {
   scrapeBills,
@@ -975,6 +979,66 @@ export const scrapeFecScheduleEDaily = onSchedule(
 );
 
 /**
+ * SEC Fails-to-Deliver (FTD) bi-monthly. Twice per month at 5 AM ET on
+ * the 1st and 16th — SEC posts half-month files ~1 week behind so this
+ * cadence catches the prior half-month with comfortable buffer.
+ */
+export const scrapeSecFtdSemimonthly = onSchedule(
+  {
+    schedule: "0 5 1,16 * *",
+    region: REGION,
+    timeZone: TZ,
+    memory: "512MiB",
+    timeoutSeconds: 540,
+    retryCount: 0,
+  },
+  async () => {
+    const started = Date.now();
+    logger.info("[sec-ftd] starting bi-monthly refresh");
+    const rows = await scrapeSecFailsToDeliver({});
+    logger.info(`[sec-ftd] scraper returned ${rows.length} FTD rows`);
+    let docsWritten = 0;
+    if (rows.length > 0) {
+      const r = await saveSecFailsToDeliver(rows);
+      logger.info(`[sec-ftd] saved ${r.saved} to ${r.collection}`);
+      docsWritten = r.saved;
+    }
+    await writeJobMeta("secFtdSync", { started, docsWritten });
+  },
+);
+
+/**
+ * CFTC Commitments of Traders (COT) reports. Weekly Saturday 7 AM ET.
+ *
+ * COT data publishes Friday 3:30 PM ET for prior Tuesday close. Saturday
+ * 7 AM pulls catches everything fresh with a comfortable buffer. 12-week
+ * rolling window handles late corrections and amendments to prior reports.
+ */
+export const scrapeCftcCotWeekly = onSchedule(
+  {
+    schedule: "0 7 * * 6",
+    region: REGION,
+    timeZone: TZ,
+    memory: "512MiB",
+    timeoutSeconds: 540,
+    retryCount: 0,
+  },
+  async () => {
+    const started = Date.now();
+    logger.info("[cftc-cot] starting weekly refresh (12-week window)");
+    const reports = await scrapeCftcCot({ lookbackWeeks: 12 });
+    logger.info(`[cftc-cot] scraper returned ${reports.length} rows`);
+    let docsWritten = 0;
+    if (reports.length > 0) {
+      const r = await saveCftcCotReports(reports);
+      logger.info(`[cftc-cot] saved ${r.saved} to ${r.collection}`);
+      docsWritten = r.saved;
+    }
+    await writeJobMeta("cftcCotSync", { started, docsWritten });
+  },
+);
+
+/**
  * SEC Schedule TO (tender offers). Daily 7 AM ET.
  *
  * Cadence: daily. New tender offer filings can land any business day;
@@ -1380,7 +1444,7 @@ export const scheduledHealthCheck = onSchedule(
 // ─── MCP HTTP server (remote-reachable tool API) ──────────────────────────
 
 const SERVER_NAME = "keyvex";
-const SERVER_VERSION = "0.41.0";
+const SERVER_VERSION = "0.42.0";
 
 /**
  * The bearer token clients send in `Authorization: Bearer <key>` headers.

@@ -10,6 +10,7 @@ import * as activistStakes from "./activist-stakes.js";
 import * as annualFinancialDisclosures from "./annual-financial-disclosures.js";
 import * as bills from "./bills.js";
 import * as congressionalTrades from "./congressional-trades.js";
+import * as cftcCot from "./cftc-cot.js";
 import * as consumerComplaints from "./consumer-complaints.js";
 import * as economicIndicators from "./economic-indicators.js";
 import * as enforcementActions from "./enforcement-actions.js";
@@ -33,6 +34,7 @@ import * as plannedInsiderSales from "./planned-insider-sales.js";
 import * as privatePlacements from "./private-placements.js";
 import * as proxyFilings from "./proxy-filings.js";
 import * as registrationStatements from "./registration-statements.js";
+import * as secFtd from "./sec-ftd.js";
 import * as rollCallVotes from "./roll-call-votes.js";
 import * as tenderOffers from "./tender-offers.js";
 import * as treasuryAuctions from "./treasury-auctions.js";
@@ -66,11 +68,13 @@ export const TOOLS: ToolModule[] = [
   enforcementActions,
   nportFilings,
   registrationStatements,
+  secFtd,
   ofacSdn,
   federalRegister,
   proxyFilings,
   treasuryAuctions,
   economicIndicators,
+  cftcCot,
   oigExclusions,
   consumerComplaints,
   fundamentals,

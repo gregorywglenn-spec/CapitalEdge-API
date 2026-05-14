@@ -672,6 +672,165 @@ export interface FederalGrantsQuery {
   limit?: number;
 }
 
+// ─── CFTC Commitments of Traders (COT) ─────────────────────────────────────
+
+/**
+ * One row from the CFTC weekly Commitments of Traders report. Each row is
+ * one contract market on one Tuesday close. Captures aggregated positioning
+ * by trader class for every regulated U.S. futures + options-on-futures
+ * contract — agricultural commodities, metals, energy, financials, FX,
+ * crypto.
+ *
+ * Trader classes (legacy futures-only report):
+ *   - Non-commercial: large speculators (hedge funds, CTAs, money managers)
+ *   - Commercial: hedgers (producers, merchants, swap dealers)
+ *   - Non-reportable: small speculators below the reporting threshold
+ *
+ * Killer-use case: identify positioning extremes that historically lead
+ * major turning points. E.g., "commercials net-short S&P at a multi-year
+ * extreme" precedes index corrections.
+ *
+ * Released every Friday 3:30 PM ET, for the prior Tuesday close.
+ */
+export interface CftcCotReport {
+  /** Composite doc ID: {contract_market_code}-{report_date YYYY-MM-DD}. */
+  id: string;
+  /** CFTC's stable code for the contract market (e.g., "13874A" = E-mini S&P 500). */
+  cftc_contract_market_code: string;
+  /** Human-readable contract name ("E-MINI S&P 500"). */
+  contract_market_name: string;
+  /** Full market + exchange string ("E-MINI S&P 500 - CHICAGO MERCANTILE EXCHANGE"). */
+  market_and_exchange_names: string;
+  /** Commodity name (e.g., "S&P 500 STOCK INDEX", "GOLD", "CRUDE OIL"). */
+  commodity_name: string;
+  /** Commodity code (3 digits). */
+  commodity_code: string;
+  /** Exchange code (e.g., "CME ", "ICE ", "NYM "). */
+  market_code: string;
+  region_code: string;
+  /** ISO date of the report (Tuesday close — published Friday). */
+  report_date: string;
+  /** "YYYY Report Week WW" string from CFTC. */
+  report_week: string;
+  open_interest: number;
+  /** Non-commercial (large speculators) — long/short/net/spread. */
+  noncomm_long: number;
+  noncomm_short: number;
+  noncomm_net: number;
+  noncomm_spread: number;
+  /** Commercial (hedgers) — long/short/net. */
+  comm_long: number;
+  comm_short: number;
+  comm_net: number;
+  /** Non-reportable (small speculators) — long/short/net. */
+  nonrept_long: number;
+  nonrept_short: number;
+  nonrept_net: number;
+  /** Week-over-week changes. */
+  change_open_interest: number;
+  change_noncomm_long: number;
+  change_noncomm_short: number;
+  change_comm_long: number;
+  change_comm_short: number;
+  change_nonrept_long: number;
+  change_nonrept_short: number;
+  /** Percent of open interest by trader class. */
+  pct_noncomm_long: number;
+  pct_noncomm_short: number;
+  pct_comm_long: number;
+  pct_comm_short: number;
+  pct_nonrept_long: number;
+  pct_nonrept_short: number;
+  /** Total trader counts. */
+  traders_total: number;
+  traders_noncomm_long: number;
+  traders_noncomm_short: number;
+  traders_comm_long: number;
+  traders_comm_short: number;
+  /** Concentration: net positions held by top 4 / top 8 traders. */
+  conc_net_le_4_long: number;
+  conc_net_le_4_short: number;
+  conc_net_le_8_long: number;
+  conc_net_le_8_short: number;
+  source_url: string;
+  scraped_at: string;
+}
+
+export interface CftcCotReportQuery {
+  /** Direct doc lookup. */
+  id?: string;
+  /** Exact contract_market_code. */
+  cftc_contract_market_code?: string;
+  /** Substring on contract_market_name (client-side). */
+  contract_market_name?: string;
+  /** Exact commodity_name. */
+  commodity_name?: string;
+  /** Inclusive lower bound on report_date (YYYY-MM-DD). */
+  since?: string;
+  /** Inclusive upper bound. */
+  until?: string;
+  /** When true, returns only the most recent week per contract. */
+  latest_only?: boolean;
+  sort_by?: "report_date" | "open_interest" | "noncomm_net" | "comm_net";
+  sort_order?: "asc" | "desc";
+  limit?: number;
+}
+
+// ─── SEC Fails-to-Deliver (FTD) ────────────────────────────────────────────
+
+/**
+ * One Fails-to-Deliver row from SEC's bi-monthly cnsfails<YYYYMM><a|b>.zip
+ * dataset. Each row = one ticker / one settlement date where a clearing
+ * member's short sale FAILED to deliver shares.
+ *
+ * Signal: persistent FTDs are a contrarian short-squeeze leading indicator
+ * — naked short pressure exceeds locate supply, or settlement / locate
+ * mechanism is breaking down on the ticker. The Reg SHO threshold list
+ * (FTDs > 0.5% of issued shares for 5+ days) is a derived view; this is
+ * the underlying daily data.
+ *
+ * Released bi-monthly, ~1 week behind the settlement period.
+ */
+export interface SecFailToDeliver {
+  /** Composite doc ID: {YYYY-MM-DD}-{cusip}. */
+  id: string;
+  /** ISO settlement date the failure occurred. */
+  settlement_date: string;
+  /** CUSIP of the security. */
+  cusip: string;
+  /** Ticker symbol (uppercase). */
+  ticker: string;
+  /** Issuer / security description from the SEC file. */
+  description: string;
+  /** Number of shares failed to deliver. */
+  quantity_fails: number;
+  /** Reference price on the settlement date. */
+  price: number;
+  /** Derived: quantity_fails * price = dollar value of the failure. */
+  fail_value: number;
+  /** YYYY-MM string for time-bucket queries. */
+  year_month: string;
+  source_url: string;
+  scraped_at: string;
+}
+
+export interface SecFailsToDeliverQuery {
+  id?: string;
+  ticker?: string;
+  cusip?: string;
+  /** Inclusive lower bound on settlement_date (YYYY-MM-DD). */
+  since?: string;
+  /** Inclusive upper bound. */
+  until?: string;
+  /** Inclusive lower bound on quantity_fails. */
+  min_quantity?: number;
+  /** Inclusive lower bound on fail_value (dollars). */
+  min_value?: number;
+  sort_by?: "settlement_date" | "quantity_fails" | "fail_value";
+  sort_order?: "asc" | "desc";
+  limit?: number;
+}
+
 // ─── Activist / 5%+ ownership disclosures (Schedule 13D / 13G) ─────────────
 
 /**
