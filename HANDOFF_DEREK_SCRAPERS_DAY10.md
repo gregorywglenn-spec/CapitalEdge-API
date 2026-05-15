@@ -1,10 +1,15 @@
 # KeyVex Day 10 Additions — Port Handoff for Derek
 
-**Purpose:** Catalog of what KeyVex shipped on May 14, 2026 (Day 10) so Derek's Claude can port the relevant pieces into `C:\CapitalEdge` / `capital-edge-d5038` without reverse-engineering each one.
+**Purpose:** Catalog of everything KeyVex shipped on Day 10 (May 14–15, 2026) so Derek's Claude can port the relevant pieces into `C:\CapitalEdge` / `capital-edge-d5038` without reverse-engineering each one.
 
 **Companion to:** `HANDOFF_DEREK_SCRAPERS.md` (Day 8 + 9 additions, 19 scrapers).
 
-**Repo state at handoff:** commit `e437972` on `main`, v0.41.0, **31 MCP tools live** at `https://mcp.keyvex.com`, 32+ scheduled scrapers running on cron. Battle test green: 97 PASS · 0 EMPTY · 5 SLOW · 0 ERROR across 102 cases. All 5 SLOW are pre-existing substring-filter perf items on big collections (v1.1 polish queue), not Day 10 regressions.
+> **⚠️ Day 10 was built in two parallel worktrees that didn't see each other**, then reconciled into one release. This doc covers **both tracks**:
+> - **Track A** (the detailed catalog below, items 20–25): FDA/CPSC product recalls, EIA energy, GovInfo documents, N-PORT holdings, Form 4 derivative extension, `unified_search` company_name+cusip.
+> - **Track B** (the section near the end of this doc): FEC Schedule A/E, USAspending grants, CFTC Commitment of Traders, SEC fails-to-deliver, FTC enforcement source, Senate roll-call votes.
+> Both tracks are merged, deployed, and live. Port them as one set.
+
+**Repo state at handoff:** merged on `main`, **v0.43.0, 36 MCP tools live** at `https://mcp.keyvex.com`. Battle test green: **120 PASS · 0 EMPTY · 3 SLOW · 0 ERROR** across 123 cases. The 3 SLOW are pre-existing substring-filter perf items on big collections (v1.1 polish queue), not regressions. Pull the latest `main` HEAD — do not port from any single intermediate commit, since the two tracks only become coherent at the merge.
 
 ---
 
@@ -378,7 +383,7 @@ unified_search(company_name:"Wells Fargo", per_source_limit:5)
 
 ## File checklist for the port
 
-Files to copy from `gregorywglenn-spec/Keyvex-API` (commit `e437972`):
+Files to copy from `gregorywglenn-spec/Keyvex-API` (latest `main` HEAD — the merged v0.43.0):
 
 ### Scrapers (new)
 - `src/scrapers/fda-recalls.ts`
@@ -460,4 +465,54 @@ firebase deploy --only functions
 
 ---
 
-**Questions / clarifications:** Greg has all the context on the KeyVex side. The HARD LESSONS above are the load-bearing details — if anything in Derek's port silently produces zero records or misses data, check the relevant Hard Lesson first.
+---
+
+## TRACK B — FEC / CFTC / SEC-FTD / grants / FTC / Senate votes
+
+Built in the parallel `focused-almeida` worktree, merged into v0.43.0. Five new scrapers, two enhancements on existing scrapers. All deployed and live.
+
+### Track B new scrapers (5)
+
+| # | Scraper | Source | Cadence | Collection | MCP tool |
+|---|---|---|---|---|---|
+| 26 | FEC Schedule A (contributions) | api.open.fec.gov | Daily 7:30 AM ET | `fec_contributions` | `get_fec_contributions` |
+| 27 | FEC Schedule E (super-PAC ads / independent expenditures) | api.open.fec.gov | Daily 7:45 AM ET | `fec_independent_expenditures` | `get_fec_independent_expenditures` |
+| 28 | USAspending Grants | api.usaspending.gov | Daily 6:12 AM ET | `federal_grants` | `get_federal_grants` |
+| 29 | CFTC Commitment of Traders | publicreporting.cftc.gov | Weekly Sat 7 AM ET | `cftc_cot_reports` | `get_cftc_cot_reports` |
+| 30 | SEC Fails-to-Deliver | sec.gov bi-monthly zips | 1st + 16th, 5 AM ET | `sec_fails_to_deliver` | `get_sec_fails_to_deliver` |
+
+### Track B enhancements (2)
+
+- **`enforcement-actions.ts`** — added **FTC** as a 6th enforcement source (`ftc.gov/feeds/press-release.xml`, RSS, no auth). `get_enforcement_actions` now spans SEC + DOJ + CFTC + OCC + FDIC + FTC.
+- **`congress-legislation.ts`** — added **Senate** roll-call votes via senate.gov XML. `api.congress.gov` has no Senate vote endpoint (confirmed 404), so Senate votes are scraped from senate.gov directly. `get_roll_call_votes` is now bicameral.
+
+### Track B HARD LESSONS — read before porting (saves 2–4 hrs of debugging)
+
+1. **FEC Schedule A/E silently ignores `page=N` pagination past ~10K rows.** It uses cursor pagination via `last_index` + `last_<sort_field>` from `pagination.last_indexes`. Without the cursor you get the same first 100 rows N times — no error, just silent duplication.
+2. **FEC `link_id` is filing-level, not row-level.** Use `sub_id` for FEC contribution doc IDs. Keying on `link_id` collapses an entire filing's contributions into one Firestore doc.
+3. **SEC FTD posting lag is 2–3 weeks, not 1.** Bake an auto-fallback that walks backward up to 6 half-month windows on a 404 until it finds a published file.
+4. **Senate `vote_date` is `DD-MMM` with no year.** Parse and assemble the year from the parent `<congress_year>` element.
+5. **CFTC field-name typos are official.** `noncomm_postions_spread_all` (missing 'i') and `change_in_noncomm_spead_all` (missing 'r') are CFTC's actual published field names. Do NOT "correct" them in raw normalization — match them exactly.
+
+### Track B files to port
+
+**Scrapers (new):** `src/scrapers/fec-schedule-a.ts`, `src/scrapers/fec-schedule-e.ts`, `src/scrapers/usaspending-grants.ts`, `src/scrapers/cftc-cot.ts`, `src/scrapers/sec-ftd.ts`
+**Scrapers (extended):** `src/scrapers/enforcement-actions.ts` (FTC source), `src/scrapers/congress-legislation.ts` (Senate votes)
+**MCP tools (new):** `src/tools/fec-contributions.ts`, `src/tools/fec-independent-expenditures.ts`, `src/tools/federal-grants.ts`, `src/tools/cftc-cot.ts`, `src/tools/sec-ftd.ts`
+**MCP tools (extended):** `src/tools/enforcement-actions.ts` (FTC), `src/tools/roll-call-votes.ts` (Senate)
+**Dependency:** `adm-zip` (for SEC FTD bi-monthly zip parsing) — already added to root `package.json`.
+**Also in:** `src/firestore.ts`, `src/types.ts`, `src/tools/index.ts`, `src/scrape.ts`, `functions/src/index.ts`, `firestore.indexes.json` — these are shared files; the merged versions on `main` contain both tracks.
+
+### Track B backfill volumes already seeded on KeyVex
+
+- FEC Schedule A: ~5,000 rows (180-day, $2.5K+, cycle 2026)
+- FEC Schedule E: ~1,000 rows
+- USAspending grants: ~167 rows (7-day window)
+- CFTC COT: ~1,106 rows (4 weeks)
+- SEC FTD: ~49,844 rows (April 2026 first-half alone — this source is high-volume)
+
+**Strategic note:** the FEC trio closes the political-alpha loop — **donations → trades → votes → contracts → enforcement** — all queryable in one MCP conversation.
+
+---
+
+**Questions / clarifications:** Greg has all the context on the KeyVex side. The HARD LESSONS in both Track A and Track B above are the load-bearing details — if anything in Derek's port silently produces zero records or misses data, check the relevant Hard Lesson first.
