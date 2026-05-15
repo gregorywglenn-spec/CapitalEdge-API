@@ -180,7 +180,12 @@ function deriveType(code: string, acqDisp: string): "buy" | "sell" {
 }
 
 /**
- * Parse a Form 4 XML document into structured trade records.
+ * Parse a Form 4 (or Form 5) XML document into structured trade records.
+ *
+ * Form 4 and Form 5 share the identical `ownershipDocument` XML schema —
+ * Form 5 is just the annual catch-up filing for transactions exempt from
+ * or missed on Form 4. The same parser handles both; `dataSource` tags
+ * which form the records came from.
  *
  * Captures both `nonDerivativeTable` (direct common-stock transactions) and
  * `derivativeTable` (options, RSUs, warrants, convertibles) rows across the
@@ -195,6 +200,7 @@ function deriveType(code: string, acqDisp: string): "buy" | "sell" {
 export function parseForm4Xml(
   xmlText: string,
   meta: FilingMeta,
+  dataSource: InsiderTransaction["data_source"] = "SEC_EDGAR_FORM4",
 ): InsiderTransaction[] {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const parsed: any = xml.parse(xmlText);
@@ -296,7 +302,7 @@ export function parseForm4Xml(
         acqDispRaw === "A" || acqDispRaw === "D" ? acqDispRaw : null,
       accession_number: meta.accession,
       sec_filing_url: meta.url,
-      data_source: "SEC_EDGAR_FORM4",
+      data_source: dataSource,
     });
     ndIdx++;
   }
@@ -366,7 +372,7 @@ export function parseForm4Xml(
         acqDispRaw === "A" || acqDispRaw === "D" ? acqDispRaw : null,
       accession_number: meta.accession,
       sec_filing_url: meta.url,
-      data_source: "SEC_EDGAR_FORM4",
+      data_source: dataSource,
     });
     dIdx++;
   }
@@ -514,5 +520,65 @@ export async function scrapeForm4LiveFeed(
   console.error(
     `[form4 live] TOTAL: ${allTrades.length} trades (${ndCount} non-derivative, ${dCount} derivative)`,
   );
+  return allTrades;
+}
+
+/**
+ * Live-feed mode for Form 5 — the annual catch-up insider filing. Form 5
+ * shares the identical `ownershipDocument` XML schema as Form 4, so it
+ * reuses parseForm4Xml; records are tagged data_source SEC_EDGAR_FORM5 and
+ * land in the same `insider_trades` collection. Form 5 volume is low (it's
+ * an annual filing, heavily concentrated after each fiscal year-end), so a
+ * wide lookback is cheap.
+ */
+export async function scrapeForm5LiveFeed(
+  lookbackDays = 7,
+  maxFilings = 100,
+): Promise<InsiderTransaction[]> {
+  const end = new Date();
+  const start = new Date();
+  start.setDate(start.getDate() - lookbackDays);
+  const startStr = start.toISOString().split("T")[0];
+  const endStr = end.toISOString().split("T")[0];
+
+  const url = `${CONFIG.SEARCH_URL}?q=%22%22&forms=5&dateRange=custom&startdt=${startStr}&enddt=${endStr}`;
+  const data = (await fetchJson(url)) as { hits?: { hits?: EdgarSearchHit[] } };
+  const hits = data.hits?.hits ?? [];
+
+  console.error(`[form5 live] ${hits.length} Form 5 filings in last ${lookbackDays}d`);
+
+  const filings: FilingMeta[] = [];
+  for (const hit of hits.slice(0, maxFilings)) {
+    const src = hit._source;
+    if (!src) continue;
+    const companyCik = (src.ciks?.[1] ?? src.ciks?.[0] ?? "").replace(
+      /^0+/,
+      "",
+    );
+    const accession = src.adsh ?? "";
+    const filedAt = src.file_date ?? "";
+    const filename = (hit._id ?? "").split(":")[1] ?? "";
+    if (!accession || !companyCik || !filename) continue;
+    filings.push({
+      accession,
+      companyCik,
+      filedAt,
+      url: `${CONFIG.EDGAR_URL}/Archives/edgar/data/${companyCik}/${formatAccession(accession)}/${filename}`,
+    });
+  }
+
+  const allTrades: InsiderTransaction[] = [];
+  for (const filing of filings) {
+    try {
+      const xmlText = await fetchText(filing.url);
+      const trades = parseForm4Xml(xmlText, filing, "SEC_EDGAR_FORM5");
+      allTrades.push(...trades);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[form5 live]   ${filing.accession}: SKIP — ${msg}`);
+    }
+  }
+
+  console.error(`[form5 live] TOTAL: ${allTrades.length} Form 5 transactions`);
   return allTrades;
 }

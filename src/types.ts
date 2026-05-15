@@ -82,7 +82,11 @@ export interface InsiderTransaction {
   acquired_disposed: "A" | "D" | null;
   accession_number: string;
   sec_filing_url: string;
-  data_source: "SEC_EDGAR_FORM4";
+  /** "SEC_EDGAR_FORM4" — open-market + derivative transactions filed within
+   *  2 business days. "SEC_EDGAR_FORM5" — the annual catch-up filing for
+   *  transactions exempt from or missed on Form 4. Both share this schema
+   *  and the same `insider_trades` collection. */
+  data_source: "SEC_EDGAR_FORM4" | "SEC_EDGAR_FORM5";
 }
 
 /**
@@ -3013,6 +3017,158 @@ export interface GovDocumentsQuery {
   /** date_issued upper bound. */
   until?: string;
   sort_by?: "date_issued" | "last_modified";
+  sort_order?: "asc" | "desc";
+  limit?: number;
+}
+
+// ─── FARA — Foreign Agents Registration Act (efile.fara.gov) ──────────────
+
+/**
+ * One registrant ↔ foreign-principal relationship from the FARA database.
+ * FARA requires anyone in the US acting as an agent of a foreign principal
+ * (government, party, company, or person) to register with the DOJ and
+ * disclose the relationship.
+ *
+ * One ForeignAgent record = one (registrant, foreign principal) pair. A
+ * registrant representing three foreign principals produces three records;
+ * a registrant with no currently-active foreign principal produces one
+ * record with the foreign-principal fields null and has_foreign_principal
+ * false (so the registrant is still queryable).
+ *
+ * The marquee signal is `foreign_principal_country` — "which US agents are
+ * registered to act for Chinese / Russian / Saudi principals." Pairs with
+ * get_lobbying_filings (LDA — domestic lobbying), get_fec_contributions,
+ * and get_congressional_trades for the full foreign-influence picture.
+ *
+ * Source: efile.fara.gov FARA API. The list endpoint for foreign principals
+ * is unreliable, so the scraper pulls the Registrants list and then queries
+ * each registration number's foreign principals individually.
+ */
+export interface ForeignAgent {
+  /** `fara-{registration_number}-{fpIndex}`, or `fara-{n}-none` when the
+   *  registrant has no active foreign principal. */
+  id: string;
+  /** FARA registration number (string for ID-safety; numeric in source). */
+  registration_number: string;
+  /** US-based registrant — the agent (person or firm). */
+  registrant_name: string;
+  /** Date the registrant registered under FARA (YYYY-MM-DD). */
+  registration_date: string;
+  registrant_address: string | null;
+  registrant_city: string | null;
+  registrant_state: string | null;
+  registrant_zip: string | null;
+  /** v1A scrapes the Active set. "active" | "terminated". */
+  status: string;
+  /** True when this record carries a foreign-principal relationship. */
+  has_foreign_principal: boolean;
+  /** Foreign principal the registrant acts for. Null when none active. */
+  foreign_principal_name: string | null;
+  /** Country of the foreign principal — the key influence signal. */
+  foreign_principal_country: string | null;
+  /** Date this foreign-principal relationship was registered (YYYY-MM-DD). */
+  foreign_principal_reg_date: string | null;
+  foreign_principal_address: string | null;
+  foreign_principal_city: string | null;
+  foreign_principal_state: string | null;
+  /** FARA eFile quick-search URL for this registrant. */
+  source_url: string;
+  scraped_at: string;
+}
+
+export interface ForeignAgentsQuery {
+  registration_number?: string;
+  /** Case-insensitive substring against registrant_name. */
+  registrant_name?: string;
+  /** Case-insensitive substring against foreign_principal_name. */
+  foreign_principal_name?: string;
+  /** Exact match on foreign_principal_country (uppercase, e.g. "CHINA"). */
+  foreign_principal_country?: string;
+  /** Filter to records that do (true) / don't (false) carry a foreign principal. */
+  has_foreign_principal?: boolean;
+  /** registration_date lower bound (YYYY-MM-DD inclusive). */
+  since?: string;
+  /** registration_date upper bound. */
+  until?: string;
+  sort_by?: "registration_date" | "foreign_principal_reg_date";
+  sort_order?: "asc" | "desc";
+  limit?: number;
+}
+
+// ─── Consolidated Screening List (api.trade.gov) ──────────────────────────
+
+/**
+ * One entry on the US Consolidated Screening List — the unified feed of
+ * twelve export-screening lists maintained by the Departments of Commerce,
+ * State, and Treasury. US persons must screen counterparties against these
+ * lists before exporting; an entity on any of them is a hard compliance
+ * flag.
+ *
+ * The CSL is broader than OFAC's SDN list (which KeyVex also exposes via
+ * get_ofac_sdn). The SDN list is one of the twelve sources here; the CSL
+ * adds the BIS Entity List, Denied Persons, Military End User, Unverified
+ * List, the State Department debarred / nonproliferation lists, and several
+ * non-SDN Treasury lists. `source` / `source_short` disambiguate.
+ *
+ * Pairs with get_federal_contracts + get_ofac_sdn for trade-compliance
+ * screening, and with get_foreign_agents for the foreign-entity overlay.
+ */
+export interface ScreeningListEntry {
+  /** `csl-{source_short}-{source_id}` — unique across all twelve lists. */
+  id: string;
+  /** Raw id from the CSL feed. */
+  source_id: string;
+  /** Entity / case number from the originating list, when present. */
+  entity_number: string | null;
+  /** Primary listed name. */
+  name: string;
+  /** Alternate names / aliases. */
+  alt_names: string[];
+  /** "Entity" | "Individual" | "Vessel" | "Aircraft" | null. */
+  type: string | null;
+  /** Full source-list name (e.g. "Entity List (EL) - Bureau of Industry..."). */
+  source: string;
+  /** Short list code: SDN, EL, DPL, MEU, UVL, CMIC, CAP, DTC, ISN, MBS, PLC, SSI. */
+  source_short: string;
+  /** Sanctions / control programs the entry falls under. */
+  programs: string[];
+  /** Free-text remarks from the source list. */
+  remarks: string | null;
+  /** Distinct ISO country codes across all of the entry's addresses. */
+  countries: string[];
+  /** Full address list. */
+  addresses: Array<{
+    address: string | null;
+    city: string | null;
+    state: string | null;
+    postal_code: string | null;
+    country: string | null;
+  }>;
+  /** Identification documents (passport, tax ID, SWIFT/BIC, etc.). */
+  ids: Array<{ type: string | null; number: string | null }>;
+  /** Individual-only: title / role. */
+  title: string | null;
+  /** Individual-only: nationalities. */
+  nationalities: string[];
+  /** URL to the source list. */
+  source_list_url: string;
+  /** URL to background information on the source list. */
+  source_information_url: string;
+  scraped_at: string;
+}
+
+export interface ScreeningListQuery {
+  /** Case-insensitive substring against name + alt_names. */
+  name?: string;
+  /** Short list code (SDN, EL, DPL, MEU, UVL, CMIC, CAP, DTC, ISN, MBS, PLC, SSI). */
+  source_short?: string;
+  /** "Entity" | "Individual" | "Vessel" | "Aircraft". */
+  type?: string;
+  /** ISO-2 country code — matches against the entry's countries array. */
+  country?: string;
+  /** Case-insensitive substring against the programs list. */
+  program?: string;
+  sort_by?: "name";
   sort_order?: "asc" | "desc";
   limit?: number;
 }

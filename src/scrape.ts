@@ -93,6 +93,8 @@ import {
   saveNportHoldings,
   saveProductRecalls,
   saveGovDocuments,
+  saveForeignAgents,
+  saveScreeningList,
   saveOfacSdn,
   saveOtcMarketWeekly,
   savePrivatePlacements,
@@ -138,7 +140,11 @@ import {
   scrapeLobbyingByPeriod,
   scrapeLobbyingByRegistrant,
 } from "./scrapers/lobbying.js";
-import { scrapeForm4ByTicker, scrapeForm4LiveFeed } from "./scrapers/form4.js";
+import {
+  scrapeForm4ByTicker,
+  scrapeForm4LiveFeed,
+  scrapeForm5LiveFeed,
+} from "./scrapers/form4.js";
 import {
   scrapeForm144ByTicker,
   scrapeForm144LiveFeed,
@@ -190,6 +196,8 @@ import {
 import { scrapeCpscRecalls } from "./scrapers/cpsc-recalls.js";
 import { scrapeEia } from "./scrapers/eia.js";
 import { scrapeGovInfo } from "./scrapers/govinfo.js";
+import { scrapeFara } from "./scrapers/fara.js";
+import { scrapeConsolidatedScreeningList } from "./scrapers/csl.js";
 import { scrapeRegistrationStatementsLiveFeed } from "./scrapers/registration-statements.js";
 import { scrapeOfacSdn } from "./scrapers/ofac-sdn.js";
 import { scrapeFederalRegister } from "./scrapers/federal-register.js";
@@ -848,6 +856,28 @@ const COMMANDS: Record<string, CliCommand> = {
       return trades;
     },
   },
+  "form5-feed": {
+    description:
+      "Scrape Form 5 (annual catch-up insider) filings across all companies for the last N days (default 7). Form 5 shares Form 4's XML schema; records land in the insider_trades collection tagged data_source SEC_EDGAR_FORM5. Add --save to write to Firestore.",
+    run: async (args) => {
+      const positional = args.find((a) => !a.startsWith("--"));
+      const days = positional ? parseInt(positional, 10) : 7;
+      if (Number.isNaN(days) || days < 1) {
+        throw new Error("Days must be a positive integer");
+      }
+      const trades = await scrapeForm5LiveFeed(days);
+      if (hasSaveFlag(args)) {
+        console.error(
+          `[save] Writing ${trades.length} Form 5 transactions to Firestore...`,
+        );
+        const result = await saveInsiderTransactions(trades);
+        console.error(
+          `[save] Saved ${result.saved} transactions to ${result.collection}`,
+        );
+      }
+      return trades;
+    },
+  },
   form144: {
     description:
       "Scrape Form 144 planned-sale notices for a single ticker (add --save to write to Firestore). Form 144 is filed BEFORE the actual sale — forward-looking signal.",
@@ -1462,6 +1492,52 @@ const COMMANDS: Record<string, CliCommand> = {
         );
       }
       return docs;
+    },
+  },
+  fara: {
+    description:
+      "Scrape FARA (Foreign Agents Registration Act) registrations from efile.fara.gov. Pulls the active registrant list, then queries each registration number's foreign principals (the list endpoint is broken FARA-side, so it iterates per-registrant). ~500 registrants at FARA's 5-req/10-sec limit ≈ 18 min for a full run. Optional: --max=N to cap registrants for testing. Add --save to write to the foreign_agents Firestore collection.",
+    run: async (args) => {
+      const maxFlag = args.find((a) => a.startsWith("--max="));
+      const maxRegistrants = maxFlag
+        ? parseInt(maxFlag.slice("--max=".length), 10)
+        : undefined;
+      if (
+        maxRegistrants !== undefined &&
+        (Number.isNaN(maxRegistrants) || maxRegistrants < 1)
+      ) {
+        throw new Error("--max must be a positive integer");
+      }
+      const agents = await scrapeFara({
+        ...(maxRegistrants !== undefined && { maxRegistrants }),
+      });
+      if (hasSaveFlag(args)) {
+        console.error(
+          `[save] Writing ${agents.length} FARA records to Firestore...`,
+        );
+        const result = await saveForeignAgents(agents);
+        console.error(
+          `[save] Saved ${result.saved} records to ${result.collection}`,
+        );
+      }
+      return agents;
+    },
+  },
+  csl: {
+    description:
+      "Scrape the US Consolidated Screening List (12 export-screening lists from Commerce/State/Treasury, ~25K entries) from api.trade.gov's key-free bulk file into the screening_list Firestore collection. Add --save to write.",
+    run: async (args) => {
+      const entries = await scrapeConsolidatedScreeningList();
+      if (hasSaveFlag(args)) {
+        console.error(
+          `[save] Writing ${entries.length} screening-list entries to Firestore...`,
+        );
+        const result = await saveScreeningList(entries);
+        console.error(
+          `[save] Saved ${result.saved} entries to ${result.collection}`,
+        );
+      }
+      return entries;
     },
   },
   "enforcement-actions": {

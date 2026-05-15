@@ -180,6 +180,62 @@
       ]
     },
     {
+      "collectionGroup": "foreign_agents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "registration_number", "order": "ASCENDING" },
+        { "fieldPath": "registration_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "foreign_agents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "foreign_principal_country", "order": "ASCENDING" },
+        { "fieldPath": "registration_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "foreign_agents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "foreign_principal_country", "order": "ASCENDING" },
+        { "fieldPath": "foreign_principal_reg_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "foreign_agents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "has_foreign_principal", "order": "ASCENDING" },
+        { "fieldPath": "registration_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "screening_list",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "source_short", "order": "ASCENDING" },
+        { "fieldPath": "name", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "screening_list",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "name", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "screening_list",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "countries", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "name", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "congressional_trades",
       "queryScope": "COLLECTION",
       "fields": [

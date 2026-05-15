@@ -69,6 +69,10 @@ import type {
   ProductRecallsQuery,
   GovDocument,
   GovDocumentsQuery,
+  ForeignAgent,
+  ForeignAgentsQuery,
+  ScreeningListEntry,
+  ScreeningListQuery,
   OfacSdnEntry,
   OfacSdnQuery,
   OtcMarketWeekly,
@@ -3275,6 +3279,180 @@ export async function saveGovDocuments(
     const chunk = documents.slice(i, i + BATCH_SIZE);
     for (const d of chunk) {
       batch.set(collection.doc(d.id), d, { merge: true });
+    }
+    await batch.commit();
+    saved += chunk.length;
+  }
+
+  return { saved, collection: COLLECTION };
+}
+
+// ─── FARA — foreign agents (efile.fara.gov) query + save ──────────────────
+
+export async function queryForeignAgents(
+  query: ForeignAgentsQuery,
+): Promise<QueryResult<ForeignAgent>> {
+  if (isStubMode()) {
+    return { results: [], has_more: false };
+  }
+
+  const db = await getLiveDb();
+  let q: FirestoreQuery = db.collection("foreign_agents");
+
+  if (query.registration_number) {
+    q = q.where("registration_number", "==", query.registration_number);
+  }
+  if (query.foreign_principal_country) {
+    q = q.where(
+      "foreign_principal_country",
+      "==",
+      query.foreign_principal_country.toUpperCase(),
+    );
+  }
+  if (query.has_foreign_principal !== undefined) {
+    q = q.where("has_foreign_principal", "==", query.has_foreign_principal);
+  }
+
+  const sortField = query.sort_by ?? "registration_date";
+  const sortOrder = query.sort_order ?? "desc";
+  if (query.since) q = q.where(sortField, ">=", query.since);
+  if (query.until) q = q.where(sortField, "<=", query.until);
+  q = q.orderBy(sortField, sortOrder);
+
+  const userLimit = query.limit ?? 50;
+  const usesSubstring = !!(query.registrant_name || query.foreign_principal_name);
+  const fetchLimit = usesSubstring ? 5000 : userLimit + 1;
+  q = q.limit(fetchLimit);
+
+  const snap = await q.get();
+  let docs = snap.docs.map((d) => d.data() as ForeignAgent);
+
+  if (query.registrant_name) {
+    const needle = query.registrant_name.toLowerCase();
+    docs = docs.filter((r) =>
+      (r.registrant_name ?? "").toLowerCase().includes(needle),
+    );
+  }
+  if (query.foreign_principal_name) {
+    const needle = query.foreign_principal_name.toLowerCase();
+    docs = docs.filter((r) =>
+      (r.foreign_principal_name ?? "").toLowerCase().includes(needle),
+    );
+  }
+
+  const has_more = docs.length > userLimit;
+  const results = docs.slice(0, userLimit);
+  return { results, has_more };
+}
+
+export async function saveForeignAgents(
+  agents: ForeignAgent[],
+): Promise<{ saved: number; collection: string }> {
+  if (isStubMode()) {
+    throw new Error(
+      "Cannot save to Firestore in stub mode (no service account at secrets/service-account.json)",
+    );
+  }
+  const COLLECTION = "foreign_agents";
+  if (agents.length === 0) return { saved: 0, collection: COLLECTION };
+
+  const db = await getLiveDb();
+  const collection = db.collection(COLLECTION);
+  const BATCH_SIZE = 400;
+  let saved = 0;
+
+  for (let i = 0; i < agents.length; i += BATCH_SIZE) {
+    const batch = db.batch();
+    const chunk = agents.slice(i, i + BATCH_SIZE);
+    for (const a of chunk) {
+      batch.set(collection.doc(a.id), a, { merge: true });
+    }
+    await batch.commit();
+    saved += chunk.length;
+  }
+
+  return { saved, collection: COLLECTION };
+}
+
+// ─── Consolidated Screening List (api.trade.gov) query + save ─────────────
+
+export async function queryScreeningList(
+  query: ScreeningListQuery,
+): Promise<QueryResult<ScreeningListEntry>> {
+  if (isStubMode()) {
+    return { results: [], has_more: false };
+  }
+
+  const db = await getLiveDb();
+  let q: FirestoreQuery = db.collection("screening_list");
+
+  if (query.source_short) {
+    q = q.where("source_short", "==", query.source_short.toUpperCase());
+  }
+  if (query.type) {
+    q = q.where("type", "==", query.type);
+  }
+  if (query.country) {
+    q = q.where("countries", "array-contains", query.country.toUpperCase());
+  }
+
+  const userLimit = query.limit ?? 50;
+  // name + program are client-side filters → pull a wide window.
+  const usesClientFilter = !!(query.name || query.program);
+  const fetchLimit = usesClientFilter ? 8000 : Math.max(userLimit * 4, 500);
+  q = q.limit(fetchLimit);
+
+  const snap = await q.get();
+  let docs = snap.docs.map((d) => d.data() as ScreeningListEntry);
+
+  if (query.name) {
+    const needle = query.name.toLowerCase();
+    docs = docs.filter((e) => {
+      if ((e.name ?? "").toLowerCase().includes(needle)) return true;
+      return (e.alt_names ?? []).some((n) =>
+        n.toLowerCase().includes(needle),
+      );
+    });
+  }
+  if (query.program) {
+    const needle = query.program.toLowerCase();
+    docs = docs.filter((e) =>
+      (e.programs ?? []).some((p) => p.toLowerCase().includes(needle)),
+    );
+  }
+
+  const sortOrder = query.sort_order ?? "asc";
+  docs.sort((a, b) => {
+    const cmp = (a.name ?? "").localeCompare(b.name ?? "");
+    return sortOrder === "desc" ? -cmp : cmp;
+  });
+
+  const has_more = docs.length > userLimit;
+  const results = docs.slice(0, userLimit);
+  return { results, has_more };
+}
+
+export async function saveScreeningList(
+  entries: ScreeningListEntry[],
+): Promise<{ saved: number; collection: string }> {
+  if (isStubMode()) {
+    throw new Error(
+      "Cannot save to Firestore in stub mode (no service account at secrets/service-account.json)",
+    );
+  }
+  const COLLECTION = "screening_list";
+  if (entries.length === 0) return { saved: 0, collection: COLLECTION };
+
+  const db = await getLiveDb();
+  const collection = db.collection(COLLECTION);
+  const BATCH_SIZE = 400;
+  let saved = 0;
+
+  for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+    const batch = db.batch();
+    const chunk = entries.slice(i, i + BATCH_SIZE);
+    for (const e of chunk) {
+      batch.set(collection.doc(e.id), e, { merge: true });
     }
     await batch.commit();
     saved += chunk.length;

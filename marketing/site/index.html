@@ -4,9 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>KeyVex — MCP server for US public financial disclosures</title>
-  <meta name="description" content="The Model Context Protocol server for US public financial disclosures. 36 tools across 40+ government sources — congressional trades, insider transactions (with option exercises), institutional + mutual-fund holdings (including derivatives), XBRL fundamentals, lobbying, federal contracts + grants, material events, FEC campaign finance + contributions + independent expenditures, bills, House + Senate roll-call votes, dark-pool volume, proxy filings, Treasury auctions, CFTC futures positioning, SEC fails-to-deliver, BLS + FRED + EIA macro data, HHS-OIG exclusions, CFPB complaints, FDA + CPSC product recalls, GovInfo congressional + GAO documents, OFAC sanctions, Federal Register, and more — all queryable by AI agents through one endpoint." />
+  <meta name="description" content="The Model Context Protocol server for US public financial disclosures. 38 tools across 42+ government sources — congressional trades, insider transactions (with option exercises), institutional + mutual-fund holdings (including derivatives), XBRL fundamentals, lobbying, FARA foreign agents, federal contracts + grants, material events, FEC campaign finance + contributions + independent expenditures, bills, House + Senate roll-call votes, dark-pool volume, proxy filings, Treasury auctions, CFTC futures positioning, SEC fails-to-deliver, BLS + FRED + EIA macro data, HHS-OIG exclusions, CFPB complaints, FDA + CPSC product recalls, GovInfo congressional + GAO documents, OFAC sanctions, the Consolidated Screening List, Federal Register, and more — all queryable by AI agents through one endpoint." />
   <meta property="og:title" content="KeyVex — MCP server for US public financial disclosures" />
-  <meta property="og:description" content="36 MCP tools across 40+ US public-disclosure sources, one Bearer-authenticated endpoint. Designed for AI agents from the ground up." />
+  <meta property="og:description" content="38 MCP tools across 42+ US public-disclosure sources, one Bearer-authenticated endpoint. Designed for AI agents from the ground up." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://keyvex.com" />
   <link rel="icon" type="image/png" href="keyvex-mark.png" />
@@ -348,13 +348,14 @@
         </p>
       </div>
       <p class="sub">
-        36 tools across 40+ government sources — congressional trades, insider
+        38 tools across 42+ government sources — congressional trades, insider
         transactions (with option exercises), institutional + mutual-fund
         holdings (including derivatives), XBRL fundamentals, proxy filings,
-        dark-pool volume, lobbying spend, FEC campaign finance + contributions
-        + independent expenditures, federal contracts + grants, bills, House +
-        Senate roll-call votes, OFAC sanctions, Federal Register rules, M&amp;A
-        tender offers, private placements, Treasury auctions, CFTC futures
+        dark-pool volume, lobbying spend, FARA foreign agents, FEC campaign
+        finance + contributions + independent expenditures, federal contracts
+        + grants, bills, House + Senate roll-call votes, OFAC sanctions, the
+        Consolidated Screening List, Federal Register rules, M&amp;A tender
+        offers, private placements, Treasury auctions, CFTC futures
         positioning, SEC fails-to-deliver, BLS + FRED + EIA macro &amp; energy
         data, HHS-OIG exclusions, CFPB complaints, FDA + CPSC product recalls,
         GovInfo congressional + GAO documents, and more — all queryable by AI
@@ -371,8 +372,8 @@
     <section id="sources">
       <h2>One queryable surface for every public US financial disclosure that matters.</h2>
       <p class="lead">
-        KeyVex normalizes 40+ distinct US public-record sources into a clean
-        Model Context Protocol (MCP) server with 36 agent-native tools. Connect
+        KeyVex normalizes 42+ distinct US public-record sources into a clean
+        Model Context Protocol (MCP) server with 38 agent-native tools. Connect
         it to Claude, Cursor, your custom agent, or any MCP-compatible client.
         No scraping, no parsing, no schema-wrangling on your end.
       </p>
@@ -417,6 +418,8 @@
         <li><strong>GovInfo legislative + oversight</strong><span class="desc">Committee reports (CRPT), public laws (PLAW), congressional hearing transcripts (CHRG), GAO oversight reports — four collections from the GPO archive.</span></li>
         <li><strong>CFTC Commitment of Traders</strong><span class="desc">Weekly futures-market positioning by trader category — commercial, non-commercial, and spreading — across every reported commodity.</span></li>
         <li><strong>SEC fails-to-deliver</strong><span class="desc">Bi-monthly settlement-failure data by security — a short-squeeze and liquidity-stress signal.</span></li>
+        <li><strong>FARA foreign agents</strong><span class="desc">Foreign Agents Registration Act filings — every US firm or person registered to act for a foreign government or entity, linked to the foreign principal and its country.</span></li>
+        <li><strong>Consolidated Screening List</strong><span class="desc">Twelve federal export-screening lists (Commerce, State, Treasury) in one feed — Entity List, Denied Persons, Military End User, SDN, and more. 25K+ restricted parties.</span></li>
       </ol>
       <p class="muted small" style="margin-top: 24px;">Refreshed continuously by autonomous schedulers. No human in the loop.</p>
     </section>
@@ -501,7 +504,7 @@ Agent: get_fec_candidate_profile(candidate_name:"&lt;member name&gt;")
       <h3 style="margin-top: 24px;">Health check (no auth required)</h3>
       <pre><code>curl https://mcp.keyvex.com</code></pre>
 
-      <h3 style="margin-top: 24px;">List the 36 tools (auth required)</h3>
+      <h3 style="margin-top: 24px;">List the 38 tools (auth required)</h3>
       <pre><code>curl -X POST https://mcp.keyvex.com \
   -H "Authorization: Bearer &lt;your-key&gt;" \
   -H "Content-Type: application/json" \
@@ -562,7 +565,7 @@ Agent: get_fec_candidate_profile(candidate_name:"&lt;member name&gt;")
             <td>Unlimited</td>
           </tr>
           <tr>
-            <td class="tier-name">All 36 tools</td>
+            <td class="tier-name">All 38 tools</td>
             <td class="check">✓</td>
             <td class="check">✓</td>
             <td class="check">✓</td>
@@ -672,7 +675,7 @@ Agent: get_fec_candidate_profile(candidate_name:"&lt;member name&gt;")
         <div class="card">
           <h3>Idempotent &amp; autonomous</h3>
           <p>
-            37+ scheduled scrapers run on cron — Form 4 every 30 min, 8-K hourly,
+            40+ scheduled scrapers run on cron — Form 4 every 30 min, 8-K hourly,
             congressional PTRs daily, full bioguide catalog weekly. Writes use
             <code>merge:true</code> semantics, so re-runs don't duplicate.
             Network blips trigger bounded retries. The warehouse fills itself in
@@ -726,13 +729,15 @@ Agent: get_fec_candidate_profile(candidate_name:"&lt;member name&gt;")
           unitedstates/congress-legislators public catalog, api.congress.gov +
           senate.gov (bills + House &amp; Senate roll-call votes),
           api.open.fec.gov (campaign finance + contributions + independent
-          expenditures), FINRA OTC Transparency, CFTC Commitment of Traders,
-          openFDA + CPSC (product recalls), GovInfo (congressional + GAO
-          documents), US Treasury (auctions + OFAC), federalregister.gov, BLS +
-          EIA economic data, FRED (Federal Reserve Economic Data), HHS-OIG
-          (LEIE exclusions), CFPB consumer complaints, and SEC + DOJ + CFTC +
-          OCC + FDIC + FTC press release feeds. All public-record data. No paid
-          data partnerships, no scraped paywalled content.
+          expenditures), efile.fara.gov (FARA foreign-agent registrations),
+          FINRA OTC Transparency, CFTC Commitment of Traders, openFDA + CPSC
+          (product recalls), GovInfo (congressional + GAO documents), US
+          Treasury (auctions + OFAC), api.trade.gov (Consolidated Screening
+          List), federalregister.gov, BLS + EIA economic data, FRED (Federal
+          Reserve Economic Data), HHS-OIG (LEIE exclusions), CFPB consumer
+          complaints, and SEC + DOJ + CFTC + OCC + FDIC + FTC press release
+          feeds. All public-record data. No paid data partnerships, no scraped
+          paywalled content.
         </p>
       </details>
 

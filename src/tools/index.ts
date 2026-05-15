@@ -20,6 +20,7 @@ import * as fecIndependentExpenditures from "./fec-independent-expenditures.js";
 import * as federalRegister from "./federal-register.js";
 import * as federalContracts from "./federal-contracts.js";
 import * as federalGrants from "./federal-grants.js";
+import * as foreignAgents from "./foreign-agents.js";
 import * as fundHoldings from "./fund-holdings.js";
 import * as fundamentals from "./fundamentals.js";
 import * as governmentPublications from "./government-publications.js";
@@ -37,6 +38,7 @@ import * as privatePlacements from "./private-placements.js";
 import * as productRecalls from "./product-recalls.js";
 import * as proxyFilings from "./proxy-filings.js";
 import * as registrationStatements from "./registration-statements.js";
+import * as screeningList from "./screening-list.js";
 import * as secFtd from "./sec-ftd.js";
 import * as rollCallVotes from "./roll-call-votes.js";
 import * as tenderOffers from "./tender-offers.js";
@@ -84,6 +86,8 @@ export const TOOLS: ToolModule[] = [
   consumerComplaints,
   fundamentals,
   governmentPublications,
+  foreignAgents,
+  screeningList,
   unifiedSearch,
 ];
 

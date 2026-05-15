@@ -61,6 +61,8 @@ import {
   saveNportHoldings,
   saveProductRecalls,
   saveGovDocuments,
+  saveForeignAgents,
+  saveScreeningList,
   saveOfacSdn,
   saveOtcMarketWeekly,
   saveConsumerComplaints,
@@ -94,13 +96,18 @@ import { scrapeBlsIndicators } from "../../src/scrapers/bls.js";
 import { scrapeFredIndicators } from "../../src/scrapers/fred.js";
 import { scrapeEia } from "../../src/scrapers/eia.js";
 import { scrapeGovInfo } from "../../src/scrapers/govinfo.js";
+import { scrapeFara } from "../../src/scrapers/fara.js";
+import { scrapeConsolidatedScreeningList } from "../../src/scrapers/csl.js";
 import { scrapeOigExclusions } from "../../src/scrapers/oig-exclusions.js";
 import { scrapeCfpbComplaints } from "../../src/scrapers/cfpb-complaints.js";
 import { scrapeAndSaveXbrlStreaming } from "../../src/scrapers/xbrl.js";
 import { XBRL_UNIVERSE } from "../../src/data/xbrl-universe.js";
 import { scrapeForm144LiveFeed } from "../../src/scrapers/form144.js";
 import { scrapeForm3LiveFeed } from "../../src/scrapers/form3.js";
-import { scrapeForm4LiveFeed } from "../../src/scrapers/form4.js";
+import {
+  scrapeForm4LiveFeed,
+  scrapeForm5LiveFeed,
+} from "../../src/scrapers/form4.js";
 import { scrapeHouseLiveFeed } from "../../src/scrapers/house.js";
 import { scrapeLobbyingByPeriod } from "../../src/scrapers/lobbying.js";
 import { scrapeSenateLiveFeed } from "../../src/scrapers/senate.js";
@@ -299,6 +306,73 @@ export const scrapeFredDaily = onSchedule(
       docsWritten = r.saved;
     }
     await writeJobMeta("fredIndicatorsSync", { started, docsWritten });
+  },
+);
+
+/**
+ * Consolidated Screening List — daily 5:50 AM ET.
+ *
+ * One key-free fetch of api.trade.gov's bulk CSL file (~25K entries across
+ * twelve Commerce/State/Treasury screening lists), normalized into the
+ * screening_list collection. The file refreshes daily; idempotent on the
+ * csl-{source}-{id} doc IDs. ~25K × 400-per-batch ≈ 65 batched writes.
+ */
+export const scrapeCslDaily = onSchedule(
+  {
+    schedule: "50 5 * * *",
+    region: REGION,
+    timeZone: TZ,
+    memory: "1GiB",
+    timeoutSeconds: 540,
+    retryCount: 0,
+  },
+  async () => {
+    const started = Date.now();
+    logger.info("[csl] starting daily refresh");
+    const entries = await scrapeConsolidatedScreeningList();
+    logger.info(`[csl] scraper returned ${entries.length} entries`);
+    let docsWritten = 0;
+    if (entries.length > 0) {
+      const r = await saveScreeningList(entries);
+      logger.info(`[csl] saved ${r.saved} to ${r.collection}`);
+      docsWritten = r.saved;
+    }
+    await writeJobMeta("cslSync", { started, docsWritten });
+  },
+);
+
+/**
+ * FARA registrations — weekly, Sunday 5:30 AM ET.
+ *
+ * Pulls the active FARA registrant list, then queries each registration
+ * number's foreign principals individually (the list endpoint is broken
+ * FARA-side). ~500 registrants at a 2.2s pace ≈ 18-20 min, so the timeout
+ * is raised well above the usual 540s. Memory 512 MiB is plenty — the
+ * payload is small, it's the request count that takes time. Weekly cadence
+ * fits FARA's filing volume (new registrations trickle in daily but the
+ * full active set changes slowly). Idempotent on the fara-{reg}-{idx} IDs.
+ */
+export const scrapeFaraWeekly = onSchedule(
+  {
+    schedule: "30 5 * * 0",
+    region: REGION,
+    timeZone: TZ,
+    memory: "512MiB",
+    timeoutSeconds: 2400,
+    retryCount: 0,
+  },
+  async () => {
+    const started = Date.now();
+    logger.info("[fara] starting weekly refresh (full active registrant sweep)");
+    const agents = await scrapeFara({});
+    logger.info(`[fara] scraper returned ${agents.length} records`);
+    let docsWritten = 0;
+    if (agents.length > 0) {
+      const r = await saveForeignAgents(agents);
+      logger.info(`[fara] saved ${r.saved} to ${r.collection}`);
+      docsWritten = r.saved;
+    }
+    await writeJobMeta("faraSync", { started, docsWritten });
   },
 );
 
@@ -504,6 +578,38 @@ export const scrapeForm4HalfHourly = onSchedule(
       docsWritten = r.saved;
     }
     await writeJobMeta("insiderTradesSync", { started, docsWritten });
+  },
+);
+
+/**
+ * Form 5 — the annual catch-up insider filing. Daily 8:20 AM ET, 3-day
+ * lookback. Form 5 shares Form 4's XML schema and lands in the same
+ * insider_trades collection (tagged data_source SEC_EDGAR_FORM5). Volume
+ * is low — Form 5 is annual, concentrated after fiscal year-ends — so a
+ * daily run with a short lookback is plenty. Idempotent on the shared
+ * Form 4/5 doc-ID scheme.
+ */
+export const scrapeForm5Daily = onSchedule(
+  {
+    schedule: "20 8 * * *",
+    region: REGION,
+    timeZone: TZ,
+    memory: "512MiB",
+    timeoutSeconds: 540,
+    retryCount: 0,
+  },
+  async () => {
+    const started = Date.now();
+    logger.info("[form5] starting (3-day lookback)");
+    const trades = await scrapeForm5LiveFeed(3);
+    logger.info(`[form5] scraper returned ${trades.length} transactions`);
+    let docsWritten = 0;
+    if (trades.length > 0) {
+      const r = await saveInsiderTransactions(trades);
+      logger.info(`[form5] saved ${r.saved} to ${r.collection}`);
+      docsWritten = r.saved;
+    }
+    await writeJobMeta("form5Sync", { started, docsWritten });
   },
 );
 
@@ -1624,7 +1730,7 @@ export const scheduledHealthCheck = onSchedule(
 // ─── MCP HTTP server (remote-reachable tool API) ──────────────────────────
 
 const SERVER_NAME = "keyvex";
-const SERVER_VERSION = "0.43.0";
+const SERVER_VERSION = "0.44.0";
 
 /**
  * The bearer token clients send in `Authorization: Bearer <key>` headers.

@@ -266,6 +266,19 @@ const TESTS: TestCase[] = [
 
   // ─── roll-call: Senate (new in Day 10) ──────────────────────────────
   { tool: "get_roll_call_votes", label: "Senate votes (Day 10)", args: { chamber: "senate", limit: 5 } },
+
+  // ─── get_foreign_agents (FARA) ──────────────────────────────────────
+  { tool: "get_foreign_agents", label: "baseline limit", args: { limit: 5 } },
+  { tool: "get_foreign_agents", label: "with foreign principal", args: { has_foreign_principal: true, limit: 5 } },
+  { tool: "get_foreign_agents", label: "agents for China", args: { foreign_principal_country: "CHINA", limit: 5 } },
+  { tool: "get_foreign_agents", label: "registrant substring", args: { registrant_name: "group", limit: 5 } },
+
+  // ─── get_screening_list (Consolidated Screening List) ───────────────
+  { tool: "get_screening_list", label: "baseline limit", args: { limit: 5 } },
+  { tool: "get_screening_list", label: "Entity List only", args: { source_short: "EL", limit: 5 } },
+  { tool: "get_screening_list", label: "entities in China", args: { country: "CN", limit: 5 } },
+  { tool: "get_screening_list", label: "name substring", args: { name: "bank", limit: 5 } },
+  { tool: "get_screening_list", label: "individuals", args: { type: "Individual", limit: 5 } },
 ];
 
 interface TestResult {
