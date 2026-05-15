@@ -358,7 +358,7 @@ export const scrapeFaraWeekly = onSchedule(
     region: REGION,
     timeZone: TZ,
     memory: "512MiB",
-    timeoutSeconds: 2400,
+    timeoutSeconds: 1800,
     retryCount: 0,
   },
   async () => {
